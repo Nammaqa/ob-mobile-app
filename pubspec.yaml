@@ -1,0 +1,98 @@
+name: organize
+description: "Organize - Digital Planner Application"
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI Components
+  cupertino_icons: ^1.0.8
+  flutter_staggered_grid_view: ^0.7.0
+  cached_network_image: ^3.4.1
+  flutter_colorpicker: ^1.1.0
+
+  # PDF & Document Handling
+  flutter_pdfview: ^1.4.1+1
+  pdf: ^3.11.3
+  syncfusion_flutter_pdfviewer: ^30.2.7
+  printing: ^5.14.2
+
+  # Drawing & Apple Pencil Support
+  flutter_signature_pad: ^3.0.1
+  perfect_freehand: ^2.4.1
+  flutter_drawing_board: ^0.9.8
+
+  # Firebase (Database & Authentication)
+  firebase_core: ^4.1.0
+  firebase_auth: ^6.0.2
+  cloud_firestore: ^6.0.1
+  firebase_storage: ^13.0.1
+  firebase_analytics: ^12.0.1
+
+  # Authentication Options
+  google_sign_in: ^7.1.1
+  sign_in_with_apple: ^7.0.1
+
+  # File & Storage Management
+  path_provider: ^2.1.5
+  file_picker: ^10.3.2
+  shared_preferences: ^2.5.3
+  image_picker: ^1.2.0
+
+  # In-App Purchases & Subscriptions
+  in_app_purchase: ^3.2.3
+  purchases_flutter: ^9.4.0
+
+  # State Management
+  provider: ^6.1.5+1
+  get: ^4.7.2
+
+  # Drag & Drop for Stickers
+  draggable_widget: ^2.0.0
+  flutter_draggable_gridview: ^0.0.13
+
+  # Utilities
+  uuid: ^4.5.1
+  intl: ^0.20.2
+  permission_handler: ^12.0.1
+  device_info_plus: ^11.5.0
+  package_info_plus: ^4.2.0
+
+  # HTTP & Network
+  http: ^1.5.0
+  dio: ^5.9.0
+
+  # Local Notifications (for subscription reminders)
+  flutter_local_notifications: ^19.4.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+
+flutter:
+  uses-material-design: true
+
+  # Assets for your app
+  assets:
+    - assets/images/
+    - assets/stickers/
+    - assets/icons/
+
+  # Custom fonts (optional - for minimal design)
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
