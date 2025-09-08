@@ -21,7 +21,6 @@ dependencies:
   # PDF & Document Handling
   flutter_pdfview: ^1.4.1+1
   pdf: ^3.11.3
-  syncfusion_flutter_pdfviewer: ^30.2.7
   printing: ^5.14.2
 
   # Drawing & Apple Pencil Support
@@ -69,9 +68,6 @@ dependencies:
   http: ^1.5.0
   dio: ^5.9.0
 
-  # Local Notifications (for subscription reminders)
-  flutter_local_notifications: ^19.4.1
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -86,13 +82,3 @@ flutter:
     - assets/images/
     - assets/stickers/
     - assets/icons/
-
-  # Custom fonts (optional - for minimal design)
-  fonts:
-    - family: Inter
-      fonts:
-        - asset: assets/fonts/Inter-Regular.ttf
-        - asset: assets/fonts/Inter-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/Inter-Bold.ttf
-          weight: 700
