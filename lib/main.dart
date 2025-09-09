@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:organize/screens/login_screen.dart';
-import 'package:organize/screens/homepage_screen.dart'; // Add this import
+import 'package:organize/screens/homepage_screen.dart';
+import 'package:organize/screens/splash_screen.dart'; // Add this import
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,10 +23,11 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const LoginPage(),
+      home: const SplashScreen(), // Changed from LoginPage() to SplashScreen()
       routes: {
+        '/splash': (context) => const SplashScreen(), // Optional: add splash route
         '/login': (context) => const LoginPage(),
-        '/homepage': (context) => const HomePage(),
+        '/homepage': (context) => const HomepageScreen(),
       },
     );
   }
