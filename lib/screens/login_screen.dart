@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -9,10 +10,12 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
   @override
   void dispose() {
     _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -168,30 +171,49 @@ class _LoginPageState extends State<LoginPage> {
                               fontSize: 16,
                               color: Color(0xFF1A1A1A),
                             ),
-                            decoration: InputDecoration(
+                            decoration: const InputDecoration(
                               hintText: 'email@domain.com',
-                              hintStyle: const TextStyle(
+                              hintStyle: TextStyle(
                                 color: Color(0xFF999999),
                                 fontSize: 16,
                               ),
                               border: InputBorder.none,
-                              contentPadding: const EdgeInsets.symmetric(
+                              contentPadding: EdgeInsets.symmetric(
                                 horizontal: 20,
                                 vertical: 16,
                               ),
-                              suffixIcon: Container(
-                                margin: const EdgeInsets.all(8),
-                                width: 32,
-                                height: 32,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF1A1A1A),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.close,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Password input field
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF5F5F5),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFFE0E0E0),
+                              width: 1,
+                            ),
+                          ),
+                          child: TextField(
+                            controller: _passwordController,
+                            obscureText: true,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Color(0xFF1A1A1A),
+                            ),
+                            decoration: const InputDecoration(
+                              hintText: 'Password',
+                              hintStyle: TextStyle(
+                                color: Color(0xFF999999),
+                                fontSize: 16,
+                              ),
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 16,
                               ),
                             ),
                           ),
@@ -202,8 +224,94 @@ class _LoginPageState extends State<LoginPage> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: () {
-                              print('Email: ${_emailController.text}');
+                            onPressed: () async {
+                              // Basic validation
+                              if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Please fill in all fields'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                                return;
+                              }
+
+                              try {
+                                // Show loading
+                                showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (context) => const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                );
+
+                                // Try to sign in first
+                                try {
+                                  await FirebaseAuth.instance.signInWithEmailAndPassword(
+                                    email: _emailController.text.trim(),
+                                    password: _passwordController.text,
+                                  );
+                                } on FirebaseAuthException catch (e) {
+                                  if (e.code == 'user-not-found') {
+                                    // User doesn't exist, create account
+                                    await FirebaseAuth.instance.createUserWithEmailAndPassword(
+                                      email: _emailController.text.trim(),
+                                      password: _passwordController.text,
+                                    );
+                                  } else {
+                                    throw e;
+                                  }
+                                }
+
+                                // Hide loading
+                                Navigator.of(context).pop();
+
+                                // Navigate to homepage
+                                Navigator.pushReplacementNamed(context, '/homepage');
+
+                              } on FirebaseAuthException catch (e) {
+                                // Hide loading
+                                Navigator.of(context).pop();
+
+                                String errorMessage;
+                                switch (e.code) {
+                                  case 'weak-password':
+                                    errorMessage = 'The password provided is too weak.';
+                                    break;
+                                  case 'email-already-in-use':
+                                    errorMessage = 'The account already exists for that email.';
+                                    break;
+                                  case 'wrong-password':
+                                    errorMessage = 'Wrong password provided.';
+                                    break;
+                                  case 'invalid-email':
+                                    errorMessage = 'The email address is not valid.';
+                                    break;
+                                  case 'invalid-credential':
+                                    errorMessage = 'Invalid email or password.';
+                                    break;
+                                  default:
+                                    errorMessage = 'An error occurred: ${e.message}';
+                                }
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(errorMessage),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              } catch (e) {
+                                // Hide loading
+                                Navigator.of(context).pop();
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('An unexpected error occurred: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF1A1A1A),
@@ -255,13 +363,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         const SizedBox(height: 20),
 
-                        // Social login buttons
-                        _buildSocialButton(
-                          icon: Icons.email_outlined,
-                          text: 'Continue with email',
-                          onPressed: () {},
-                        ),
-                        const SizedBox(height: 10),
+                        // Social login buttons (removed email option)
                         _buildSocialButton(
                           icon: Icons.apple,
                           text: 'Continue with Apple',
