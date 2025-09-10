@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:organize/screens/homepage_screen.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -11,6 +12,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -224,95 +226,7 @@ class _LoginPageState extends State<LoginPage> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: () async {
-                              // Basic validation
-                              if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Please fill in all fields'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                                return;
-                              }
-
-                              try {
-                                // Show loading
-                                showDialog(
-                                  context: context,
-                                  barrierDismissible: false,
-                                  builder: (context) => const Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                );
-
-                                // Try to sign in first
-                                try {
-                                  await FirebaseAuth.instance.signInWithEmailAndPassword(
-                                    email: _emailController.text.trim(),
-                                    password: _passwordController.text,
-                                  );
-                                } on FirebaseAuthException catch (e) {
-                                  if (e.code == 'user-not-found') {
-                                    // User doesn't exist, create account
-                                    await FirebaseAuth.instance.createUserWithEmailAndPassword(
-                                      email: _emailController.text.trim(),
-                                      password: _passwordController.text,
-                                    );
-                                  } else {
-                                    throw e;
-                                  }
-                                }
-
-                                // Hide loading
-                                Navigator.of(context).pop();
-
-                                // Navigate to homepage
-                                Navigator.pushReplacementNamed(context, '/homepage');
-
-                              } on FirebaseAuthException catch (e) {
-                                // Hide loading
-                                Navigator.of(context).pop();
-
-                                String errorMessage;
-                                switch (e.code) {
-                                  case 'weak-password':
-                                    errorMessage = 'The password provided is too weak.';
-                                    break;
-                                  case 'email-already-in-use':
-                                    errorMessage = 'The account already exists for that email.';
-                                    break;
-                                  case 'wrong-password':
-                                    errorMessage = 'Wrong password provided.';
-                                    break;
-                                  case 'invalid-email':
-                                    errorMessage = 'The email address is not valid.';
-                                    break;
-                                  case 'invalid-credential':
-                                    errorMessage = 'Invalid email or password.';
-                                    break;
-                                  default:
-                                    errorMessage = 'An error occurred: ${e.message}';
-                                }
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(errorMessage),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              } catch (e) {
-                                // Hide loading
-                                Navigator.of(context).pop();
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('An unexpected error occurred: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
-                              }
-                            },
+                            onPressed: _isLoading ? null : _handleAuthentication,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF1A1A1A),
                               foregroundColor: Colors.white,
@@ -322,7 +236,16 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                               elevation: 0,
                             ),
-                            child: const Text(
+                            child: _isLoading
+                                ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                                : const Text(
                               'Continue',
                               style: TextStyle(
                                 fontSize: 16,
@@ -363,7 +286,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         const SizedBox(height: 20),
 
-                        // Social login buttons (removed email option)
+                        // Social login buttons
                         _buildSocialButton(
                           icon: Icons.apple,
                           text: 'Continue with Apple',
@@ -398,6 +321,127 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _handleAuthentication() async {
+    // Basic validation
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      _showSnackBar('Please fill in all fields', Colors.red);
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      UserCredential? userCredential;
+
+      // Try to sign in first
+      try {
+        userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'user-not-found') {
+          // User doesn't exist, create account
+          userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+          );
+        } else {
+          throw e;
+        }
+      }
+
+      // Add a small delay to ensure the auth state is properly set
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Check if we have a user and navigate
+      if (userCredential.user != null) {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const HomepageScreen()),
+          );
+        }
+      }
+
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+
+        String errorMessage;
+        switch (e.code) {
+          case 'weak-password':
+            errorMessage = 'The password provided is too weak.';
+            break;
+          case 'email-already-in-use':
+            errorMessage = 'The account already exists for that email.';
+            break;
+          case 'wrong-password':
+            errorMessage = 'Wrong password provided.';
+            break;
+          case 'invalid-email':
+            errorMessage = 'The email address is not valid.';
+            break;
+          case 'invalid-credential':
+            errorMessage = 'Invalid email or password.';
+            break;
+          default:
+            errorMessage = 'Authentication failed: ${e.message}';
+        }
+
+        _showSnackBar(errorMessage, Colors.red);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+
+        // Check if it's the specific PigeonUserDetails error
+        if (e.toString().contains('PigeonUserDetails') || e.toString().contains('List<Object?>')) {
+          // This is the known Firebase Auth bug - authentication actually succeeded
+          // Wait a bit and then navigate
+          await Future.delayed(const Duration(milliseconds: 1000));
+
+          // Check if user is authenticated
+          final user = FirebaseAuth.instance.currentUser;
+          if (user != null && mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const HomepageScreen()),
+            );
+            return;
+          }
+        }
+
+        print('Debug: Error type: ${e.runtimeType}');
+        print('Debug: Error message: $e');
+
+        _showSnackBar('Authentication error occurred. Please try again.', Colors.orange);
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        duration: const Duration(seconds: 4),
       ),
     );
   }

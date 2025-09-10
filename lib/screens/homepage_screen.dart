@@ -1,7 +1,5 @@
 // screens/homepage_screen.dart
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import '../components/sidebar_component.dart';
 import 'search_screen.dart';
 import 'favourites_screen.dart';
@@ -12,94 +10,76 @@ class HomepageScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: Firebase.initializeApp(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
+    // Remove the FutureBuilder and Firebase.initializeApp() since it's already initialized in main.dart
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      body: Row(
+        children: [
+          // Sidebar
+          SidebarComponent(
+            selectedIndex: 0, // Home is selected
+            onNavigationTap: (index) => _handleNavigation(context, index),
+          ),
 
-        if (snapshot.hasError) {
-          return Scaffold(
-            body: Center(
-              child: Text('Error initializing Firebase: ${snapshot.error}'),
-            ),
-          );
-        }
-
-        return Scaffold(
-          backgroundColor: Colors.grey[50],
-          body: Row(
-            children: [
-              // Sidebar
-              SidebarComponent(
-                selectedIndex: 0, // Home is selected
-                onNavigationTap: (index) => _handleNavigation(context, index),
-              ),
-
-              // Main Content Area
-              Expanded(
-                child: Column(
-                  children: [
-                    // Top Bar
-                    Container(
-                      height: 80,
-                      padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border(
-                          bottom: BorderSide(color: Colors.grey[200]!, width: 1),
+          // Main Content Area
+          Expanded(
+            child: Column(
+              children: [
+                // Top Bar
+                Container(
+                  height: 80,
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey[200]!, width: 1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text(
+                        'Home',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      child: Row(
+                      const Spacer(),
+                      Row(
                         children: [
-                          const Text(
-                            'Home',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
+                          IconButton(
+                            icon: const Icon(Icons.upgrade),
+                            onPressed: () {},
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.grey[200],
+                              foregroundColor: Colors.black,
                             ),
                           ),
-                          const Spacer(),
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.upgrade),
-                                onPressed: () {},
-                                style: IconButton.styleFrom(
-                                  backgroundColor: Colors.grey[200],
-                                  foregroundColor: Colors.black,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              IconButton(
-                                icon: const Icon(Icons.notifications_outlined),
-                                onPressed: () {},
-                              ),
-                              const SizedBox(width: 12),
-                              IconButton(
-                                icon: const Icon(Icons.settings_outlined),
-                                onPressed: () {},
-                              ),
-                            ],
+                          const SizedBox(width: 12),
+                          IconButton(
+                            icon: const Icon(Icons.notifications_outlined),
+                            onPressed: () {},
+                          ),
+                          const SizedBox(width: 12),
+                          IconButton(
+                            icon: const Icon(Icons.settings_outlined),
+                            onPressed: () {},
                           ),
                         ],
                       ),
-                    ),
-
-                    // Content Area
-                    Expanded(
-                      child: _buildHomeContent(),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+
+                // Content Area
+                Expanded(
+                  child: _buildHomeContent(),
+                ),
+              ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 

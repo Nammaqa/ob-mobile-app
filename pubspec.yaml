@@ -28,6 +28,9 @@ dependencies:
   perfect_freehand: ^2.4.1
   flutter_drawing_board: ^0.9.8
 
+
+  syncfusion_flutter_pdfviewer: ^31.1.18  # Updated version
+
   # Firebase (Database & Authentication) - Stable versions
   firebase_core: ^2.24.2
   firebase_auth: ^4.15.3
@@ -81,3 +84,4 @@ flutter:
     - assets/images/
     - assets/stickers/
     - assets/icons/
+    - assets/templates
