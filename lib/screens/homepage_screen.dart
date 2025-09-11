@@ -1,9 +1,11 @@
 // screens/homepage_screen.dart
 import 'package:flutter/material.dart';
 import '../components/sidebar_component.dart';
+import '../components/create_note_dialog.dart';
 import 'search_screen.dart';
 import 'favourites_screen.dart';
 import 'planner_screen.dart';
+import 'note_editor_screen.dart';
 
 class HomepageScreen extends StatelessWidget {
   const HomepageScreen({Key? key}) : super(key: key);
@@ -73,7 +75,7 @@ class HomepageScreen extends StatelessWidget {
 
                 // Content Area
                 Expanded(
-                  child: _buildHomeContent(),
+                  child: _buildHomeContent(context),
                 ),
               ],
             ),
@@ -83,7 +85,7 @@ class HomepageScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHomeContent() {
+  Widget _buildHomeContent(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(32.0),
       child: Column(
@@ -142,10 +144,7 @@ class HomepageScreen extends StatelessWidget {
               mainAxisSpacing: 16,
               childAspectRatio: 0.75,
               children: [
-                _buildNewPlannerCard(),
-                _buildPlannerCard('Planner', Colors.brown[800]!, true),
-                _buildPlannerCard('Planner', Colors.blue[300]!, true),
-                _buildPlannerCard('Planner', Colors.pink[300]!, true),
+                _buildNewPlannerCard(context),
               ],
             ),
           ),
@@ -154,10 +153,10 @@ class HomepageScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildNewPlannerCard() {
+  Widget _buildNewPlannerCard(BuildContext context) {
     return InkWell(
       onTap: () {
-        // Handle new planner creation
+        _showCreateNoteDialog(context);
       },
       borderRadius: BorderRadius.circular(12),
       child: Container(
@@ -246,6 +245,33 @@ class HomepageScreen extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showCreateNoteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return CreateNoteDialog(
+          onCreateNote: (String name, String description) {
+            print('Creating note: $name - $description'); // Debug print
+            _navigateToNoteEditor(context, name, description);
+          },
+        );
+      },
+    );
+  }
+
+  void _navigateToNoteEditor(BuildContext context, String name, String description) {
+    print('Navigating to editor with: $name'); // Debug print
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NoteEditorScreen(
+          noteName: name,
+          noteDescription: description,
         ),
       ),
     );

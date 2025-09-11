@@ -17,11 +17,13 @@ dependencies:
   flutter_staggered_grid_view: ^0.7.0
   cached_network_image: ^3.4.1
   flutter_colorpicker: ^1.1.0
+  signature: ^5.4.0
 
   # PDF & Document Handling
   flutter_pdfview: ^1.4.1+1
   pdf: ^3.11.3
   printing: ^5.14.2
+
 
   # Drawing & Apple Pencil Support
   flutter_signature_pad: ^3.0.1
@@ -29,7 +31,6 @@ dependencies:
   flutter_drawing_board: ^0.9.8
 
 
-  syncfusion_flutter_pdfviewer: ^31.1.18  # Updated version
 
   # Firebase (Database & Authentication) - Stable versions
   firebase_core: ^2.24.2
@@ -47,6 +48,7 @@ dependencies:
   file_picker: ^10.3.2
   shared_preferences: ^2.5.3
   image_picker: ^1.2.0
+
 
   # In-App Purchases & Subscriptions
   in_app_purchase: ^3.2.3
@@ -84,4 +86,3 @@ flutter:
     - assets/images/
     - assets/stickers/
     - assets/icons/
-    - assets/templates
