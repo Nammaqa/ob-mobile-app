@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:organize/screens/login_screen.dart';
+import 'package:organize/screens/welcome_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -83,7 +83,7 @@ class SplashScreenState extends State<SplashScreen> {
                                                               onTap: () {
                                                                 Navigator.push(
                                                                   context,
-                                                                  MaterialPageRoute(builder: (context) => const LoginPage()),
+                                                                  MaterialPageRoute(builder: (context) => const WelcomeScreen()),
                                                                 );
                                                               },
                                                               child: Container(

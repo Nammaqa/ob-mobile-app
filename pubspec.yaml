@@ -48,6 +48,7 @@ dependencies:
   file_picker: ^10.3.2
   shared_preferences: ^2.5.3
   image_picker: ^1.2.0
+  url_launcher: ^6.3.1
 
 
   # In-App Purchases & Subscriptions
@@ -64,7 +65,7 @@ dependencies:
 
   # Utilities
   uuid: ^4.5.1
-  intl: ^0.20.2
+  intl: ^0.19.0
   permission_handler: ^12.0.1
   device_info_plus: ^11.5.0
   package_info_plus: ^4.2.0
@@ -72,6 +73,9 @@ dependencies:
   # HTTP & Network
   http: ^1.5.0
   dio: ^5.9.0
+  syncfusion_flutter_pdf: ^31.1.18
+  syncfusion_flutter_pdfviewer: ^31.1.18
+
 
 dev_dependencies:
   flutter_test:
@@ -86,3 +90,4 @@ flutter:
     - assets/images/
     - assets/stickers/
     - assets/icons/
+    - assets/templates/
