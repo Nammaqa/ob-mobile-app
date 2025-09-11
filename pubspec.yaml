@@ -74,7 +74,8 @@ dependencies:
   http: ^1.5.0
   dio: ^5.9.0
   syncfusion_flutter_pdf: ^31.1.18
-  syncfusion_flutter_pdfviewer: ^31.1.18
+  pdfx: ^2.6.0
+
 
 
 dev_dependencies:
