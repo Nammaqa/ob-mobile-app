@@ -386,14 +386,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
                           // Social login buttons
                           _buildSocialButton(
-                            icon: Icons.email_outlined,
-                            text: 'Continue with email',
-                            onPressed: () {
-                              _showEmailLoginDialog(context);
-                            },
-                          ),
-                          const SizedBox(height: 8), // Reduced from 12
-                          _buildSocialButton(
                             icon: Icons.apple,
                             text: 'Continue with Apple',
                             onPressed: () {},
@@ -419,24 +411,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                             text: 'Continue with Google',
                             onPressed: () {
                               Navigator.pushReplacementNamed(context, '/HomeScreen');
-                            },
-                          ),
-                          const SizedBox(height: 16), // Reduced from 20
-
-                          // Additional options
-                          _buildAuthOptionButton(
-                            icon: Icons.business_outlined,
-                            text: 'Sign in with SSO',
-                            onPressed: () {
-                              _showSSODialog(context);
-                            },
-                          ),
-                          const SizedBox(height: 6), // Reduced from 8
-                          _buildAuthOptionButton(
-                            icon: Icons.security_outlined,
-                            text: 'Login with MFA',
-                            onPressed: () {
-                              _showMFADialog(context);
                             },
                           ),
                         ],

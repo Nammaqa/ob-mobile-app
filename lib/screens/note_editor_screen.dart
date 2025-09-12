@@ -109,22 +109,22 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
               onSelected: (value) => _handleZoomAction(value),
               itemBuilder: (context) => [
                 const PopupMenuItem(
-                  value: 'fit_page',
-                  child: Row(
-                    children: [
-                      Icon(Icons.fit_screen, size: 18),
-                      SizedBox(width: 8),
-                      Text('Fit Page'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
                   value: 'fit_width',
                   child: Row(
                     children: [
                       Icon(Icons.swap_horiz, size: 18),
                       SizedBox(width: 8),
                       Text('Fit Width'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'fit_page',
+                  child: Row(
+                    children: [
+                      Icon(Icons.fit_screen, size: 18),
+                      SizedBox(width: 8),
+                      Text('Fit Page'),
                     ],
                   ),
                 ),
@@ -191,6 +191,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           ],
         ],
       ),
+      // Remove any body padding by setting extendBody to true
+      extendBody: true,
       body: _buildBody(),
       // Floating action button for page navigation
       floatingActionButton: (!_isLoading && _errorMessage == null && _totalPages > 1)
@@ -283,18 +285,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       );
     }
 
-    // PDF Viewer with Apple Planner template
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+    // PDF Viewer with Apple Planner template - Full width and height
+    return SizedBox.expand(
       child: SfPdfViewer.asset(
         _templatePath,
         key: _pdfViewerKey,
@@ -308,9 +300,15 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         interactionMode: PdfInteractionMode.selection,
         scrollDirection: PdfScrollDirection.vertical,
         pageLayoutMode: PdfPageLayoutMode.single,
+        // Set initial zoom to fit width
+        initialZoomLevel: 1.0,
         onDocumentLoaded: (PdfDocumentLoadedDetails details) {
           setState(() {
             _totalPages = details.document.pages.count;
+          });
+          // Automatically fit to width when document loads
+          Future.delayed(const Duration(milliseconds: 500), () {
+            _pdfViewerController.zoomLevel = 1.25; // Adjust this value as needed for fit width
           });
         },
         onPageChanged: (PdfPageChangedDetails details) {
@@ -402,6 +400,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         _pdfViewerController.zoomLevel = 1.0;
         break;
       case 'fit_width':
+      // Calculate fit width zoom level based on screen width
+      // You might need to adjust this value based on your PDF width
         _pdfViewerController.zoomLevel = 1.25;
         break;
       case 'zoom_in':
