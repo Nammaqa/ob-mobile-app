@@ -10,7 +10,7 @@ plugins {
 
 android {
     namespace = "com.example.organize"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = "27.0.12077973" // Updated NDK version
 
     compileOptions {
