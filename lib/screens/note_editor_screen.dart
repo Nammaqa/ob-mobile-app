@@ -1,9 +1,12 @@
+// screens/note_editor_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../components/drawing_editor.dart';
 
 class NoteEditorScreen extends StatefulWidget {
   final String noteName;
@@ -27,36 +30,129 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   int _totalPages = 0;
   bool _isLoading = true;
   String? _errorMessage;
+  String? _cachedPdfPath;
 
-  // Your single template path
   static const String _templatePath = 'assets/templates/apple_planner.pdf';
+  static const String _cacheKey = 'apple_planner_cache_path';
+  static const String _cacheVersionKey = 'apple_planner_cache_version';
+  static const String _currentVersion = '1.0.0';
 
   @override
   void initState() {
     super.initState();
     _pdfViewerController = PdfViewerController();
-    _checkAssetExists();
+    _initializePdfCache();
   }
 
-  Future<void> _checkAssetExists() async {
+  Future<void> _initializePdfCache() async {
     try {
-      // Try to load the asset to check if it exists
-      await DefaultAssetBundle.of(context).load(_templatePath);
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? cachedPath = prefs.getString(_cacheKey);
+      final String? cachedVersion = prefs.getString(_cacheVersionKey);
+
+      if (cachedPath != null &&
+          cachedVersion == _currentVersion &&
+          await File(cachedPath).exists()) {
+        _cachedPdfPath = cachedPath;
+        setState(() {
+          _isLoading = false;
+        });
+      } else {
+        await _cachePdfToLocalStorage(prefs);
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Failed to initialize PDF cache: $e';
+      });
+    }
+  }
+
+  Future<void> _cachePdfToLocalStorage(SharedPreferences prefs) async {
+    try {
+      final ByteData data = await DefaultAssetBundle.of(context).load(_templatePath);
+      final Uint8List bytes = data.buffer.asUint8List();
+
+      final Directory appDir = await getApplicationDocumentsDirectory();
+      final String cacheDir = '${appDir.path}/pdf_cache';
+
+      await Directory(cacheDir).create(recursive: true);
+
+      final String cachedPath = '$cacheDir/apple_planner_cached.pdf';
+      final File cachedFile = File(cachedPath);
+      await cachedFile.writeAsBytes(bytes);
+
+      await prefs.setString(_cacheKey, cachedPath);
+      await prefs.setString(_cacheVersionKey, _currentVersion);
+
+      _cachedPdfPath = cachedPath;
       setState(() {
         _isLoading = false;
       });
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Apple Planner template not found. Please make sure "assets/templates/apple_planner.pdf" exists in your assets folder.';
+        _errorMessage = 'Failed to cache PDF: $e';
       });
+    }
+  }
+
+  static Future<void> clearPdfCache() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? cachedPath = prefs.getString(_cacheKey);
+
+      if (cachedPath != null) {
+        final File cachedFile = File(cachedPath);
+        if (await cachedFile.exists()) {
+          await cachedFile.delete();
+        }
+      }
+
+      await prefs.remove(_cacheKey);
+      await prefs.remove(_cacheVersionKey);
+    } catch (e) {
+      print('Error clearing cache: $e');
+    }
+  }
+
+  Future<void> _saveUserState() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('${widget.noteName}_current_page', _currentPageNumber);
+      await prefs.setDouble('${widget.noteName}_zoom_level', _pdfViewerController.zoomLevel);
+      await prefs.setString('${widget.noteName}_last_opened', DateTime.now().toIso8601String());
+    } catch (e) {
+      print('Error saving user state: $e');
+    }
+  }
+
+  Future<void> _loadUserState() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final int? savedPage = prefs.getInt('${widget.noteName}_current_page');
+      final double? savedZoom = prefs.getDouble('${widget.noteName}_zoom_level');
+
+      if (savedPage != null && savedPage > 0 && savedPage <= _totalPages) {
+        _pdfViewerController.jumpToPage(savedPage);
+      }
+
+      if (savedZoom != null && savedZoom > 0) {
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted) {
+            _pdfViewerController.zoomLevel = savedZoom;
+          }
+        });
+      }
+    } catch (e) {
+      print('Error loading user state: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,15 +282,25 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     ],
                   ),
                 ),
+                const PopupMenuItem(
+                  value: 'clear_cache',
+                  child: Row(
+                    children: [
+                      Icon(Icons.clear_all, size: 18),
+                      SizedBox(width: 8),
+                      Text('Clear Cache'),
+                    ],
+                  ),
+                ),
               ],
             ),
           ],
         ],
       ),
-      // Remove any body padding by setting extendBody to true
-      extendBody: true,
-      body: _buildBody(),
-      // Floating action button for page navigation
+      body: Container(
+        color: Colors.white,
+        child: _buildBody(),
+      ),
       floatingActionButton: (!_isLoading && _errorMessage == null && _totalPages > 1)
           ? FloatingActionButton.extended(
         onPressed: _showGoToPageDialog,
@@ -213,22 +319,44 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
+            SizedBox(
+              width: 50,
+              height: 50,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                backgroundColor: Colors.grey[300],
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[600]!),
+              ),
+            ),
+            const SizedBox(height: 20),
             Text(
-              'Loading Apple Planner...',
+              _cachedPdfPath == null
+                  ? 'Preparing Apple Planner...'
+                  : 'Loading from cache...',
               style: TextStyle(
                 fontSize: 16,
-                color: Colors.grey[600],
+                color: Colors.grey[700],
+                fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               widget.noteName,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
+                color: Colors.grey[600],
               ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _cachedPdfPath == null
+                  ? 'First time setup - caching for faster future loads...'
+                  : 'Loading cached planner...',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[500],
+              ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -264,65 +392,117 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _isLoading = true;
-                  _errorMessage = null;
-                });
-                _checkAssetExists();
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Go Back'),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    setState(() {
+                      _isLoading = true;
+                      _errorMessage = null;
+                    });
+                    await clearPdfCache();
+                    await _initializePdfCache();
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+                const SizedBox(width: 12),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Go Back'),
+                ),
+              ],
             ),
           ],
         ),
       );
     }
 
-    // PDF Viewer with Apple Planner template - Full width and height
-    return SizedBox.expand(
-      child: SfPdfViewer.asset(
-        _templatePath,
-        key: _pdfViewerKey,
-        controller: _pdfViewerController,
-        canShowPaginationDialog: _canShowPaginationDialog,
-        canShowPasswordDialog: false,
-        canShowScrollHead: true,
-        canShowScrollStatus: true,
-        enableDoubleTapZooming: true,
-        enableTextSelection: true,
-        interactionMode: PdfInteractionMode.selection,
-        scrollDirection: PdfScrollDirection.vertical,
-        pageLayoutMode: PdfPageLayoutMode.single,
-        // Set initial zoom to fit width
-        initialZoomLevel: 1.0,
-        onDocumentLoaded: (PdfDocumentLoadedDetails details) {
-          setState(() {
-            _totalPages = details.document.pages.count;
-          });
-          // Automatically fit to width when document loads
-          Future.delayed(const Duration(milliseconds: 500), () {
-            _pdfViewerController.zoomLevel = 1.25; // Adjust this value as needed for fit width
-          });
-        },
-        onPageChanged: (PdfPageChangedDetails details) {
+    // PDF with drawing overlay
+    return DrawingOverlay(
+      onSave: _handleDrawingSave,
+      child: _buildPdfView(),
+    );
+  }
+
+  Widget _buildPdfView() {
+    return SfPdfViewer.file(
+      File(_cachedPdfPath!),
+      key: _pdfViewerKey,
+      controller: _pdfViewerController,
+      canShowPaginationDialog: _canShowPaginationDialog,
+      canShowPasswordDialog: false,
+      canShowScrollHead: true,
+      canShowScrollStatus: true,
+      enableDoubleTapZooming: true,
+      enableTextSelection: true,
+      interactionMode: PdfInteractionMode.selection,
+      scrollDirection: PdfScrollDirection.vertical,
+      pageLayoutMode: PdfPageLayoutMode.single,
+      initialZoomLevel: 1.0,
+      onDocumentLoaded: (PdfDocumentLoadedDetails details) {
+        setState(() {
+          _totalPages = details.document.pages.count;
+        });
+        _loadUserState();
+      },
+      onPageChanged: (PdfPageChangedDetails details) {
+        if (mounted) {
           setState(() {
             _currentPageNumber = details.newPageNumber;
           });
-        },
-        onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
+          _saveUserState();
+        }
+      },
+      onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
+        if (mounted) {
           setState(() {
             _errorMessage = 'Failed to load Apple Planner: ${details.error}';
           });
-        },
-      ),
+        }
+      },
     );
+  }
+
+  Future<void> _handleDrawingSave(Uint8List drawingBytes) async {
+    try {
+      Directory? directory;
+      if (Platform.isAndroid) {
+        directory = await getExternalStorageDirectory();
+      } else {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      if (directory != null) {
+        final String fileName = '${widget.noteName.replaceAll(' ', '_')}_drawing_page_${_currentPageNumber}_${DateTime.now().millisecondsSinceEpoch}.png';
+        final String path = '${directory.path}/$fileName';
+
+        final File file = File(path);
+        await file.writeAsBytes(drawingBytes);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Drawing saved: $fileName'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.green,
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save drawing: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   void _previousPage() {
@@ -400,8 +580,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         _pdfViewerController.zoomLevel = 1.0;
         break;
       case 'fit_width':
-      // Calculate fit width zoom level based on screen width
-      // You might need to adjust this value based on your PDF width
         _pdfViewerController.zoomLevel = 1.25;
         break;
       case 'zoom_in':
@@ -413,6 +591,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         _pdfViewerController.zoomLevel = (currentZoom * 0.8).clamp(1.0, 3.0);
         break;
     }
+    _saveUserState();
   }
 
   void _handleMoreActions(String action) {
@@ -426,10 +605,46 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
       case 'export':
         _exportNote();
         break;
+      case 'clear_cache':
+        _clearCacheDialog();
+        break;
     }
   }
 
-  void _showNoteInfo() {
+  void _clearCacheDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear Cache'),
+        content: const Text('This will clear the cached PDF and free up storage space. The PDF will be re-cached on next load.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await clearPdfCache();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Cache cleared successfully'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Clear', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showNoteInfo() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String? lastOpened = prefs.getString('${widget.noteName}_last_opened');
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -444,7 +659,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
             _buildInfoRow('Total Pages', '$_totalPages'),
             _buildInfoRow('Current Page', '$_currentPageNumber'),
             _buildInfoRow('Zoom Level', '${(_pdfViewerController.zoomLevel * 100).toInt()}%'),
-            _buildInfoRow('Created', DateTime.now().toString().split('.')[0]),
+            _buildInfoRow('Last Opened', lastOpened != null
+                ? DateTime.parse(lastOpened).toString().split('.')[0]
+                : 'Never'),
+            _buildInfoRow('Cache Status', _cachedPdfPath != null ? 'Cached' : 'Not Cached'),
+            _buildInfoRow('Drawing', 'Available - Use toolbar at top'),
           ],
         ),
         actions: [
@@ -483,11 +702,19 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
 
   Future<void> _saveCopy() async {
     try {
-      // Load asset data
-      final ByteData data = await DefaultAssetBundle.of(context).load(_templatePath);
-      final Uint8List bytes = data.buffer.asUint8List();
+      if (_cachedPdfPath == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('PDF not loaded yet'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
 
-      // Get documents directory (works on both Android and iOS)
+      final File cachedFile = File(_cachedPdfPath!);
+      final Uint8List bytes = await cachedFile.readAsBytes();
+
       Directory? directory;
       if (Platform.isAndroid) {
         directory = await getExternalStorageDirectory();
@@ -499,14 +726,12 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         final String fileName = '${widget.noteName.replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}.pdf';
         final String path = '${directory.path}/$fileName';
 
-        // Write file
         final File file = File(path);
         await file.writeAsBytes(bytes);
 
-        // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Note saved: $fileName\nLocation: ${directory.path}'),
+            content: Text('Note saved: $fileName'),
             duration: const Duration(seconds: 4),
             backgroundColor: Colors.green,
           ),
@@ -523,7 +748,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   }
 
   Future<void> _exportNote() async {
-    // Show export options
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -537,7 +761,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _saveCopy(); // Save as PDF
+              _saveCopy();
             },
             child: const Text('Export'),
           ),
@@ -548,6 +772,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
 
   @override
   void dispose() {
+    _saveUserState();
     _pdfViewerController.dispose();
     super.dispose();
   }
