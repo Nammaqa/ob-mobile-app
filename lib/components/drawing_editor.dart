@@ -82,12 +82,14 @@ class DrawingPath {
 class DrawingOverlay extends StatefulWidget {
   final Widget child;
   final Function(Uint8List)? onSave;
-  final String noteId; // Add this to identify different notes
+  final String noteId;
+  final int currentPage; // Add current page parameter
 
   const DrawingOverlay({
     Key? key,
     required this.child,
-    required this.noteId, // Make this required
+    required this.noteId,
+    required this.currentPage, // Make this required
     this.onSave,
   }) : super(key: key);
 
@@ -101,11 +103,13 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   double _strokeWidth = 3.0;
   bool _toolbarVisible = true;
 
-  List<DrawingPath> _paths = [];
+  // Store drawings per page
+  Map<int, List<DrawingPath>> _pageDrawings = {};
   DrawingPath? _currentPath;
 
   final GlobalKey _drawingKey = GlobalKey();
   bool _isLoading = true;
+  int _lastPageNumber = -1;
 
   // Keep the state alive when navigating
   @override
@@ -118,21 +122,45 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   }
 
   @override
+  void didUpdateWidget(DrawingOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // If page changed, save current page and load new page
+    if (oldWidget.currentPage != widget.currentPage) {
+      _saveCurrentPageDrawing(oldWidget.currentPage);
+      _loadCurrentPageDrawing();
+    }
+  }
+
+  @override
   void dispose() {
     _saveDrawingState();
     super.dispose();
+  }
+
+  // Get current page drawings
+  List<DrawingPath> get _currentPagePaths {
+    return _pageDrawings[widget.currentPage] ?? [];
   }
 
   // Load drawing state from SharedPreferences
   Future<void> _loadDrawingState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final String key = 'drawing_paths_${widget.noteId}';
-      final String? pathsJson = prefs.getString(key);
+      final String key = 'page_drawings_${widget.noteId}';
+      final String? drawingsJson = prefs.getString(key);
 
-      if (pathsJson != null) {
-        final List<dynamic> pathsList = json.decode(pathsJson);
-        _paths = pathsList.map((p) => DrawingPath.fromJson(p)).toList();
+      if (drawingsJson != null) {
+        final Map<String, dynamic> drawingsMap = json.decode(drawingsJson);
+        _pageDrawings.clear();
+
+        drawingsMap.forEach((pageStr, pathsList) {
+          final pageNum = int.parse(pageStr);
+          final List<DrawingPath> paths = (pathsList as List)
+              .map((p) => DrawingPath.fromJson(p))
+              .toList();
+          _pageDrawings[pageNum] = paths;
+        });
       }
 
       // Load tool settings
@@ -151,15 +179,40 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
     }
   }
 
+  // Load drawings for current page
+  void _loadCurrentPageDrawing() {
+    setState(() {
+      // This will trigger a rebuild with the current page's drawings
+    });
+  }
+
+  // Save current page drawing before switching
+  void _saveCurrentPageDrawing(int pageNumber) {
+    if (_pageDrawings[pageNumber]?.isNotEmpty == true) {
+      _saveDrawingState();
+    }
+  }
+
   // Save drawing state to SharedPreferences
   Future<void> _saveDrawingState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final String key = 'drawing_paths_${widget.noteId}';
+      final String key = 'page_drawings_${widget.noteId}';
 
-      if (_paths.isNotEmpty) {
-        final pathsJson = json.encode(_paths.map((p) => p.toJson()).toList());
-        await prefs.setString(key, pathsJson);
+      if (_pageDrawings.isNotEmpty) {
+        final Map<String, dynamic> drawingsMap = {};
+        _pageDrawings.forEach((pageNum, paths) {
+          if (paths.isNotEmpty) {
+            drawingsMap[pageNum.toString()] = paths.map((p) => p.toJson()).toList();
+          }
+        });
+
+        if (drawingsMap.isNotEmpty) {
+          final drawingsJson = json.encode(drawingsMap);
+          await prefs.setString(key, drawingsJson);
+        } else {
+          await prefs.remove(key);
+        }
       } else {
         await prefs.remove(key);
       }
@@ -178,7 +231,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   Future<void> _clearDrawingState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('drawing_paths_${widget.noteId}');
+      await prefs.remove('page_drawings_${widget.noteId}');
       await prefs.remove('drawing_color_${widget.noteId}');
       await prefs.remove('drawing_stroke_${widget.noteId}');
       await prefs.remove('drawing_toolbar_${widget.noteId}');
@@ -202,6 +255,8 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       );
     }
 
+    final currentPagePaths = _currentPagePaths;
+
     return Stack(
       children: [
         // PDF Viewer (background)
@@ -220,7 +275,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
                   color: Colors.transparent,
                   child: CustomPaint(
                     painter: DrawingPainter(
-                      paths: _paths,
+                      paths: currentPagePaths,
                       currentPath: _currentPath,
                     ),
                     size: Size.infinite,
@@ -230,13 +285,13 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
             ),
           ),
 
-        // Always show the drawing overlay (even in select mode) so drawings are visible
-        if (_currentTool == DrawingTool.none && _paths.isNotEmpty)
+        // Always show the drawing overlay for current page (even in select mode)
+        if (_currentTool == DrawingTool.none && currentPagePaths.isNotEmpty)
           Positioned.fill(
             child: IgnorePointer(
               child: CustomPaint(
                 painter: DrawingPainter(
-                  paths: _paths,
+                  paths: currentPagePaths,
                   currentPath: null,
                 ),
                 size: Size.infinite,
@@ -282,7 +337,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
           ),
         ),
 
-        // Tool indicator
+        // Tool indicator with page info
         if (_currentTool != DrawingTool.none)
           Positioned(
             bottom: 20,
@@ -306,7 +361,32 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    _getToolName(_currentTool),
+                    '${_getToolName(_currentTool)} - Page ${widget.currentPage}',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        // Page drawing indicator (show if current page has drawings)
+        if (currentPagePaths.isNotEmpty && _currentTool == DrawingTool.none)
+          Positioned(
+            bottom: 20,
+            left: 20,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.draw, color: Colors.white, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Page ${widget.currentPage} has drawings',
                     style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                 ],
@@ -318,6 +398,8 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   }
 
   Widget _buildToolbar() {
+    final currentPagePaths = _currentPagePaths;
+
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -425,28 +507,36 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
 
             const SizedBox(width: 16),
 
-            // Undo
+            // Undo (for current page only)
             IconButton(
-              onPressed: _paths.isNotEmpty ? _undo : null,
+              onPressed: currentPagePaths.isNotEmpty ? _undo : null,
               icon: const Icon(Icons.undo),
               iconSize: 20,
               tooltip: 'Undo',
             ),
 
-            // Clear all
+            // Clear current page
             IconButton(
-              onPressed: _paths.isNotEmpty ? _showClearDialog : null,
+              onPressed: currentPagePaths.isNotEmpty ? _showClearCurrentPageDialog : null,
               icon: const Icon(Icons.clear),
               iconSize: 20,
-              tooltip: 'Clear All',
+              tooltip: 'Clear Page',
             ),
 
-            // Save
+            // Clear all pages
             IconButton(
-              onPressed: _paths.isNotEmpty ? _saveDrawing : null,
+              onPressed: _pageDrawings.isNotEmpty ? _showClearAllDialog : null,
+              icon: const Icon(Icons.clear_all),
+              iconSize: 20,
+              tooltip: 'Clear All Pages',
+            ),
+
+            // Save current page drawing
+            IconButton(
+              onPressed: currentPagePaths.isNotEmpty ? _saveDrawing : null,
               icon: const Icon(Icons.save),
               iconSize: 20,
-              tooltip: 'Save Drawing',
+              tooltip: 'Save Page Drawing',
               color: Colors.green[600],
             ),
           ],
@@ -546,7 +636,12 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
 
   void _onPanEnd(DragEndDetails details) {
     if (_currentPath != null) {
-      _paths.add(_currentPath!);
+      // Add to current page's drawings
+      if (_pageDrawings[widget.currentPage] == null) {
+        _pageDrawings[widget.currentPage] = [];
+      }
+      _pageDrawings[widget.currentPage]!.add(_currentPath!);
+
       _currentPath = null;
       setState(() {});
       _saveDrawingState(); // Save after each stroke
@@ -637,20 +732,24 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   }
 
   void _undo() {
-    if (_paths.isNotEmpty) {
+    final currentPagePaths = _pageDrawings[widget.currentPage];
+    if (currentPagePaths != null && currentPagePaths.isNotEmpty) {
       setState(() {
-        _paths.removeLast();
+        currentPagePaths.removeLast();
+        if (currentPagePaths.isEmpty) {
+          _pageDrawings.remove(widget.currentPage);
+        }
       });
       _saveDrawingState();
     }
   }
 
-  void _showClearDialog() {
+  void _showClearCurrentPageDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear All'),
-        content: const Text('Remove all drawings? This cannot be undone.'),
+        title: Text('Clear Page ${widget.currentPage}'),
+        content: Text('Remove all drawings from page ${widget.currentPage}? This cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -659,13 +758,40 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
           TextButton(
             onPressed: () {
               setState(() {
-                _paths.clear();
+                _pageDrawings.remove(widget.currentPage);
+              });
+              _saveDrawingState();
+              Navigator.pop(context);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showClearAllDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear All Pages'),
+        content: const Text('Remove all drawings from all pages? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _pageDrawings.clear();
               });
               _clearDrawingState();
               Navigator.pop(context);
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Clear'),
+            child: const Text('Clear All'),
           ),
         ],
       ),
@@ -685,8 +811,8 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Drawing saved!'),
+          SnackBar(
+            content: Text('Page ${widget.currentPage} drawing saved!'),
             backgroundColor: Colors.green,
           ),
         );

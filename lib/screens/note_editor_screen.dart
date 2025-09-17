@@ -420,12 +420,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     }
 
     // PDF with drawing overlay
-    // PDF with drawing overlay
-    // PDF with drawing overlay
     return Container(
       color: Colors.white, // Ensure white background
       child: DrawingOverlay(
-        noteId: widget.noteName, // Add this line
+        noteId: widget.noteName,
+        currentPage: _currentPageNumber, // Add this line
         onSave: _handleDrawingSave,
         child: _buildPdfView(),
       ),
