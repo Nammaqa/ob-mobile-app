@@ -1,8 +1,10 @@
 // components/drawing_overlay.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
+import 'dart:convert';
 
 enum DrawingTool {
   none,
@@ -16,6 +18,32 @@ class DrawingPoint {
   final Paint paint;
 
   DrawingPoint({required this.offset, required this.paint});
+
+  // Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'x': offset.dx,
+      'y': offset.dy,
+      'color': paint.color.value,
+      'strokeWidth': paint.strokeWidth,
+      'blendMode': paint.blendMode.index,
+    };
+  }
+
+  // Create from JSON
+  factory DrawingPoint.fromJson(Map<String, dynamic> json) {
+    final paint = Paint()
+      ..color = Color(json['color'])
+      ..strokeWidth = json['strokeWidth']
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke
+      ..blendMode = BlendMode.values[json['blendMode']];
+
+    return DrawingPoint(
+      offset: Offset(json['x'], json['y']),
+      paint: paint,
+    );
+  }
 }
 
 class DrawingPath {
@@ -23,15 +51,43 @@ class DrawingPath {
   final Paint paint;
 
   DrawingPath({required this.points, required this.paint});
+
+  // Convert to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'points': points.map((p) => p.toJson()).toList(),
+      'color': paint.color.value,
+      'strokeWidth': paint.strokeWidth,
+      'blendMode': paint.blendMode.index,
+    };
+  }
+
+  // Create from JSON
+  factory DrawingPath.fromJson(Map<String, dynamic> json) {
+    final paint = Paint()
+      ..color = Color(json['color'])
+      ..strokeWidth = json['strokeWidth']
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke
+      ..blendMode = BlendMode.values[json['blendMode']];
+
+    final points = (json['points'] as List)
+        .map((p) => DrawingPoint.fromJson(p))
+        .toList();
+
+    return DrawingPath(points: points, paint: paint);
+  }
 }
 
 class DrawingOverlay extends StatefulWidget {
   final Widget child;
   final Function(Uint8List)? onSave;
+  final String noteId; // Add this to identify different notes
 
   const DrawingOverlay({
     Key? key,
     required this.child,
+    required this.noteId, // Make this required
     this.onSave,
   }) : super(key: key);
 
@@ -39,7 +95,7 @@ class DrawingOverlay extends StatefulWidget {
   State<DrawingOverlay> createState() => _DrawingOverlayState();
 }
 
-class _DrawingOverlayState extends State<DrawingOverlay> {
+class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAliveClientMixin {
   DrawingTool _currentTool = DrawingTool.none;
   Color _currentColor = Colors.red;
   double _strokeWidth = 3.0;
@@ -49,9 +105,103 @@ class _DrawingOverlayState extends State<DrawingOverlay> {
   DrawingPath? _currentPath;
 
   final GlobalKey _drawingKey = GlobalKey();
+  bool _isLoading = true;
+
+  // Keep the state alive when navigating
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDrawingState();
+  }
+
+  @override
+  void dispose() {
+    _saveDrawingState();
+    super.dispose();
+  }
+
+  // Load drawing state from SharedPreferences
+  Future<void> _loadDrawingState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String key = 'drawing_paths_${widget.noteId}';
+      final String? pathsJson = prefs.getString(key);
+
+      if (pathsJson != null) {
+        final List<dynamic> pathsList = json.decode(pathsJson);
+        _paths = pathsList.map((p) => DrawingPath.fromJson(p)).toList();
+      }
+
+      // Load tool settings
+      _currentColor = Color(prefs.getInt('drawing_color_${widget.noteId}') ?? Colors.red.value);
+      _strokeWidth = prefs.getDouble('drawing_stroke_${widget.noteId}') ?? 3.0;
+      _toolbarVisible = prefs.getBool('drawing_toolbar_${widget.noteId}') ?? true;
+
+    } catch (e) {
+      print('Error loading drawing state: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  // Save drawing state to SharedPreferences
+  Future<void> _saveDrawingState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String key = 'drawing_paths_${widget.noteId}';
+
+      if (_paths.isNotEmpty) {
+        final pathsJson = json.encode(_paths.map((p) => p.toJson()).toList());
+        await prefs.setString(key, pathsJson);
+      } else {
+        await prefs.remove(key);
+      }
+
+      // Save tool settings
+      await prefs.setInt('drawing_color_${widget.noteId}', _currentColor.value);
+      await prefs.setDouble('drawing_stroke_${widget.noteId}', _strokeWidth);
+      await prefs.setBool('drawing_toolbar_${widget.noteId}', _toolbarVisible);
+
+    } catch (e) {
+      print('Error saving drawing state: $e');
+    }
+  }
+
+  // Clear drawing state from storage
+  Future<void> _clearDrawingState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('drawing_paths_${widget.noteId}');
+      await prefs.remove('drawing_color_${widget.noteId}');
+      await prefs.remove('drawing_stroke_${widget.noteId}');
+      await prefs.remove('drawing_toolbar_${widget.noteId}');
+    } catch (e) {
+      print('Error clearing drawing state: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+
+    if (_isLoading) {
+      return Stack(
+        children: [
+          widget.child,
+          const Center(
+            child: CircularProgressIndicator(),
+          ),
+        ],
+      );
+    }
+
     return Stack(
       children: [
         // PDF Viewer (background)
@@ -76,6 +226,20 @@ class _DrawingOverlayState extends State<DrawingOverlay> {
                     size: Size.infinite,
                   ),
                 ),
+              ),
+            ),
+          ),
+
+        // Always show the drawing overlay (even in select mode) so drawings are visible
+        if (_currentTool == DrawingTool.none && _paths.isNotEmpty)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: DrawingPainter(
+                  paths: _paths,
+                  currentPath: null,
+                ),
+                size: Size.infinite,
               ),
             ),
           ),
@@ -385,6 +549,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> {
       _paths.add(_currentPath!);
       _currentPath = null;
       setState(() {});
+      _saveDrawingState(); // Save after each stroke
     }
   }
 
@@ -476,6 +641,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> {
       setState(() {
         _paths.removeLast();
       });
+      _saveDrawingState();
     }
   }
 
@@ -495,6 +661,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> {
               setState(() {
                 _paths.clear();
               });
+              _clearDrawingState();
               Navigator.pop(context);
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),

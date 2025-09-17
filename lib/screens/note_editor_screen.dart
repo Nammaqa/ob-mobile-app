@@ -420,17 +420,26 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     }
 
     // PDF with drawing overlay
-    return DrawingOverlay(
-      onSave: _handleDrawingSave,
-      child: _buildPdfView(),
+    // PDF with drawing overlay
+    // PDF with drawing overlay
+    return Container(
+      color: Colors.white, // Ensure white background
+      child: DrawingOverlay(
+        noteId: widget.noteName, // Add this line
+        onSave: _handleDrawingSave,
+        child: _buildPdfView(),
+      ),
     );
   }
 
   Widget _buildPdfView() {
-    return SfPdfViewer.file(
-      File(_cachedPdfPath!),
-      key: _pdfViewerKey,
-      controller: _pdfViewerController,
+    return Container(
+        color: Colors.white, // Add white background
+        child: SfPdfViewer.file(
+          File(_cachedPdfPath!),
+          key: _pdfViewerKey,
+          controller: _pdfViewerController,
+          // ... rest of the properties
       canShowPaginationDialog: _canShowPaginationDialog,
       canShowPasswordDialog: false,
       canShowScrollHead: true,
@@ -462,7 +471,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           });
         }
       },
-    );
+    ));
   }
 
   Future<void> _handleDrawingSave(Uint8List drawingBytes) async {
