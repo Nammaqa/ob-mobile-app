@@ -301,15 +301,15 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
         color: Colors.white,
         child: _buildBody(),
       ),
-      floatingActionButton: (!_isLoading && _errorMessage == null && _totalPages > 1)
-          ? FloatingActionButton.extended(
-        onPressed: _showGoToPageDialog,
-        backgroundColor: Colors.blue[600],
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.pageview, size: 18),
-        label: Text('$_currentPageNumber / $_totalPages'),
-      )
-          : null,
+      // floatingActionButton: (!_isLoading && _errorMessage == null && _totalPages > 1)
+      //     ? FloatingActionButton.extended(
+      //   onPressed: _showGoToPageDialog,
+      //   backgroundColor: Colors.blue[600],
+      //   foregroundColor: Colors.white,
+      //   icon: const Icon(Icons.pageview, size: 18),
+      //   label: Text('$_currentPageNumber / $_totalPages'),
+      // )
+      //     : null,
     );
   }
 
