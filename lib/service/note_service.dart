@@ -20,14 +20,16 @@ class NoteService {
     }
 
     try {
+      final now = DateTime.now();
       final noteRef = await _firestore.collection('notes').add({
         'name': name,
         'description': description,
         'userId': currentUserId,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
+        'createdAt': Timestamp.fromDate(now),
+        'updatedAt': Timestamp.fromDate(now),
         'lastOpenedPage': 1,
         'zoomLevel': 1.0,
+        'isFavorite': false,
       });
 
       return noteRef.id;
@@ -52,10 +54,23 @@ class NoteService {
     });
   }
 
-  // Get a single note
+  // Get a single note with retry mechanism for newly created notes
   Future<Note?> getNote(String noteId) async {
     try {
-      final doc = await _firestore.collection('notes').doc(noteId).get();
+      // First attempt
+      var doc = await _firestore.collection('notes').doc(noteId).get();
+
+      // If document doesn't exist or timestamps are null, retry a few times
+      int retryCount = 0;
+      const maxRetries = 5;
+      const retryDelay = Duration(milliseconds: 200);
+
+      while ((!doc.exists || _hasNullTimestamps(doc.data())) && retryCount < maxRetries) {
+        await Future.delayed(retryDelay);
+        doc = await _firestore.collection('notes').doc(noteId).get();
+        retryCount++;
+      }
+
       if (doc.exists) {
         return Note.fromDocument(doc);
       }
@@ -63,6 +78,12 @@ class NoteService {
     } catch (e) {
       throw Exception('Failed to get note: $e');
     }
+  }
+
+  // Helper method to check if document has null timestamps
+  bool _hasNullTimestamps(Map<String, dynamic>? data) {
+    if (data == null) return true;
+    return data['createdAt'] == null || data['updatedAt'] == null;
   }
 
   // Update note content
@@ -80,7 +101,7 @@ class NoteService {
 
     try {
       final updates = <String, dynamic>{
-        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedAt': Timestamp.fromDate(DateTime.now()),
       };
 
       if (name != null) updates['name'] = name;
@@ -104,7 +125,7 @@ class NoteService {
     try {
       await _firestore.collection('notes').doc(noteId).update({
         'drawingData': drawingData,
-        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedAt': Timestamp.fromDate(DateTime.now()),
       });
     } catch (e) {
       throw Exception('Failed to save drawing data: $e');
@@ -133,7 +154,7 @@ class NoteService {
     try {
       await _firestore.collection('notes').doc(noteId).update({
         'isFavorite': isFavorite,
-        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedAt': Timestamp.fromDate(DateTime.now()),
       });
     } catch (e) {
       throw Exception('Failed to toggle favorite: $e');

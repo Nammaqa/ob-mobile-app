@@ -10,7 +10,6 @@ import 'favourites_screen.dart';
 import 'planner_screen.dart';
 import 'note_editor_screen.dart';
 
-
 class HomepageScreen extends StatefulWidget {
   const HomepageScreen({Key? key}) : super(key: key);
 
@@ -229,42 +228,7 @@ class _HomepageScreenState extends State<HomepageScreen> {
                     sortedNotes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
                 }
 
-                if (notes.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.note_add, size: 64, color: Colors.grey[400]),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No notes yet',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Create your first note to get started',
-                          style: TextStyle(color: Colors.grey[500]),
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton.icon(
-                          onPressed: () => _showCreateNoteDialog(context),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Create Note'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
+                // Always show the grid/list view with "New Note" card at the beginning
                 if (_viewMode == 'list') {
                   return ListView.builder(
                     itemCount: sortedNotes.length + 1,
@@ -524,50 +488,16 @@ class _HomepageScreenState extends State<HomepageScreen> {
     }
   }
 
+  // UPDATED: Simplified method that uses the new self-contained dialog
   void _showCreateNoteDialog(BuildContext context) {
     showDialog(
       context: context,
+      barrierDismissible: false, // Prevent dismissing while creating
       builder: (BuildContext context) {
         return CreateNoteDialog(
           onCreateNote: (String name, String description) async {
-            try {
-              // Show loading indicator
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (context) => const Center(
-                  child: CircularProgressIndicator(),
-                ),
-              );
-
-              // Create note in Firestore
-              final noteId = await _noteService.createNote(
-                name: name,
-                description: description,
-              );
-
-              // Close loading dialog
-              Navigator.pop(context);
-
-              // Open the newly created note
-              final note = await _noteService.getNote(noteId);
-              if (note != null && mounted) {
-                _openNote(context, note);
-              }
-            } catch (e) {
-              // Close loading dialog if still open
-              if (Navigator.canPop(context)) {
-                Navigator.pop(context);
-              }
-
-              // Show error
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Failed to create note: $e'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
+            // This callback is kept for backward compatibility
+            // but the actual creation is now handled inside the dialog
           },
         );
       },
