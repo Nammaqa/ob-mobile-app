@@ -13,10 +13,26 @@ class SidebarComponent extends StatelessWidget {
   }) : super(key: key);
 
   final List<NavigationItem> _navigationItems = const [
-    NavigationItem(icon: Icons.home, label: 'Home', route: '/homepage'),
-    NavigationItem(icon: Icons.search, label: 'Search', route: '/search'),
-    NavigationItem(icon: Icons.favorite, label: 'Favourites', route: '/favourites'),
-    NavigationItem(icon: Icons.calendar_today, label: 'Planner', route: '/planner'),
+    NavigationItem(
+      assetPath: 'assets/icons/home.png',
+      label: 'Home',
+      route: '/homepage',
+    ),
+    NavigationItem(
+      assetPath: 'assets/icons/search.png',
+      label: 'Search',
+      route: '/search',
+    ),
+    NavigationItem(
+      assetPath: 'assets/icons/favourites.png',
+      label: 'Favourites',
+      route: '/favourites',
+    ),
+    NavigationItem(
+      assetPath: 'assets/icons/planner.png',
+      label: 'Planner',
+      route: '/planner',
+    ),
   ];
 
   @override
@@ -34,70 +50,35 @@ class SidebarComponent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // Header with Logo
           Padding(
             padding: const EdgeInsets.all(24.0),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(
-                    Icons.apps,
-                    color: Colors.white,
-                    size: 20,
-                  ),
+                // App icon (keeping the original icon for now)
+                Image.asset(
+                  'assets/icons/hide_sidepanel.png', // <-- your PNG path
+                  width: 28,
+                  height: 28,
+                  fit: BoxFit.contain,
+                ),
+
+
+                const SizedBox(height: 16),
+
+                // Logo Image
+                Image.asset(
+                  'assets/images/organize_splash.png', // Replace with your logo path
+                  height: 60,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.centerLeft,
                 ),
               ],
             ),
           ),
 
-          // Brand Name
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: RichText(
-              text: const TextSpan(
-                children: [
-                  TextSpan(
-                    text: 'Organize',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
-                  ),
-                  TextSpan(
-                    text: '.',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Text(
-              'Better',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-                letterSpacing: 2,
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 40),
+          const SizedBox(height: 14),
 
           // Discover Section
           Padding(
@@ -143,17 +124,30 @@ class SidebarComponent extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        Icon(
+                        // Show PNG if available, else fallback to Icon
+                        item.assetPath != null
+                            ? Image.asset(
+                          item.assetPath!,
+                          width: 20,
+                          height: 20,
+                          color: isSelected
+                              ? Colors.black
+                              : Colors.grey[600], // remove if you don’t want tint
+                        )
+                            : Icon(
                           item.icon,
                           size: 20,
-                          color: isSelected ? Colors.black : Colors.grey[600],
+                          color: isSelected
+                              ? Colors.black
+                              : Colors.grey[600],
                         ),
                         const SizedBox(width: 12),
                         Text(
                           item.label,
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+                            fontWeight:
+                            isSelected ? FontWeight.w500 : FontWeight.normal,
                             color: isSelected ? Colors.black : Colors.grey[600],
                           ),
                         ),
@@ -221,12 +215,14 @@ class SidebarComponent extends StatelessWidget {
 }
 
 class NavigationItem {
-  final IconData icon;
+  final IconData? icon; // Optional fallback
+  final String? assetPath; // PNG asset path
   final String label;
   final String route;
 
   const NavigationItem({
-    required this.icon,
+    this.icon,
+    this.assetPath,
     required this.label,
     required this.route,
   });

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../components/sidebar_component.dart';
+import '../components/header_component.dart';
 import '../components/create_note_dialog.dart';
 import '../service/note_service.dart';
 import '../models/note_model.dart';
@@ -21,6 +22,7 @@ class _HomepageScreenState extends State<HomepageScreen> {
   final NoteService _noteService = NoteService();
   String _sortOption = 'recent';
   String _viewMode = 'grid'; // grid or list
+  String _filterOption = 'all'; // all, recent, favorites, etc.
 
   @override
   Widget build(BuildContext context) {
@@ -38,71 +40,10 @@ class _HomepageScreenState extends State<HomepageScreen> {
           Expanded(
             child: Column(
               children: [
-                // Top Bar
-                Container(
-                  height: 80,
-                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border(
-                      bottom: BorderSide(color: Colors.grey[200]!, width: 1),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Text(
-                        'My Notes',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      StreamBuilder<List<Note>>(
-                        stream: _noteService.getUserNotes(),
-                        builder: (context, snapshot) {
-                          final count = snapshot.data?.length ?? 0;
-                          return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '$count notes',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 14,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const Spacer(),
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.upgrade),
-                            onPressed: () {},
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.grey[200],
-                              foregroundColor: Colors.black,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          IconButton(
-                            icon: const Icon(Icons.notifications_outlined),
-                            onPressed: () {},
-                          ),
-                          const SizedBox(width: 12),
-                          IconButton(
-                            icon: const Icon(Icons.settings_outlined),
-                            onPressed: () {},
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                // Header Component
+                HeaderComponent(
+                  title: 'Home',
+                  noteService: _noteService,
                 ),
 
                 // Content Area
@@ -126,57 +67,214 @@ class _HomepageScreenState extends State<HomepageScreen> {
           // Filter/View Options
           Row(
             children: [
-              // Sort dropdown
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: Colors.grey[300]!),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _sortOption,
-                    icon: const Icon(Icons.arrow_drop_down, size: 20),
-                    style: const TextStyle(fontSize: 14, color: Colors.black),
-                    onChanged: (String? newValue) {
-                      if (newValue != null) {
-                        setState(() {
-                          _sortOption = newValue;
-                        });
-                      }
-                    },
-                    items: <String>['recent', 'name', 'oldest']
-                        .map<DropdownMenuItem<String>>((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(
-                          value == 'recent' ? 'Recent' :
-                          value == 'name' ? 'Name' : 'Oldest',
+              // Filter dropdown with icon
+              PopupMenuButton<String>(
+                onSelected: (String value) {
+                  setState(() {
+                    _filterOption = value;
+                  });
+                },
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  PopupMenuItem<String>(
+                    value: 'all',
+                    child: Row(
+                      children: [
+                        Image.asset(
+                          'assets/icons/menu.png',
+                          width: 16,
+                          height: 16,
                         ),
-                      );
-                    }).toList(),
+                        SizedBox(width: 8),
+                        Text('All'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'recent',
+                    child: Row(
+                      children: [
+                        Icon(Icons.access_time, size: 16),
+                        SizedBox(width: 8),
+                        Text('Recent'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'favorites',
+                    child: Row(
+                      children: [
+                        Icon(Icons.star, size: 16),
+                        SizedBox(width: 8),
+                        Text('Favorites'),
+                      ],
+                    ),
+                  ),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.grey[300]!),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _filterOption == 'all'
+                          ? Image.asset(
+                        'assets/icons/menu.png',
+                        width: 16,
+                        height: 16,
+                        color: Colors.grey[600],
+                      )
+                          : Icon(
+                        _filterOption == 'recent' ? Icons.access_time : Icons.star,
+                        size: 16,
+                        color: Colors.grey[600],
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _filterOption == 'all' ? 'All' :
+                        _filterOption == 'recent' ? 'Recent' : 'Favorites',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.arrow_drop_down,
+                        size: 20,
+                        color: Colors.grey[600],
+                      ),
+                    ],
                   ),
                 ),
               ),
               const Spacer(),
               Row(
                 children: [
-                  IconButton(
-                    icon: Icon(_viewMode == 'grid' ? Icons.list : Icons.grid_view),
-                    onPressed: () {
+                  // Grid/List toggle with gradient background
+                  InkWell(
+                    onTap: () {
                       setState(() {
                         _viewMode = _viewMode == 'grid' ? 'list' : 'grid';
                       });
                     },
-                    tooltip: _viewMode == 'grid' ? 'List View' : 'Grid View',
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color(0xFF202020),
+                            Color(0xFF6F6F6F),
+                            Color(0xFF999999),
+                            Color(0xFFB1B1B1),
+                            Color(0xFFD9D9D9),
+                          ],
+                          stops: [0.0, 0.25, 0.5, 0.75, 1.0],
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Icon(
+                        _viewMode == 'grid' ? Icons.list : Icons.grid_view,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
-                    onPressed: () {
+                  const SizedBox(width: 8),
+                  // Refresh button with gradient background
+                  InkWell(
+                    onTap: () {
                       setState(() {}); // Force refresh
                     },
-                    tooltip: 'Refresh',
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color(0xFF202020),
+                            Color(0xFF6F6F6F),
+                            Color(0xFF999999),
+                            Color(0xFFB1B1B1),
+                            Color(0xFFD9D9D9),
+                          ],
+                          stops: [0.0, 0.25, 0.5, 0.75, 1.0],
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(
+                        Icons.refresh,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Additional button
+                  InkWell(
+                    onTap: () {},
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color(0xFF202020),
+                            Color(0xFF6F6F6F),
+                            Color(0xFF999999),
+                            Color(0xFFB1B1B1),
+                            Color(0xFFD9D9D9),
+                          ],
+                          stops: [0.0, 0.25, 0.5, 0.75, 1.0],
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(
+                        Icons.more_vert,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Settings button
+                  InkWell(
+                    onTap: () {},
+                    borderRadius: BorderRadius.circular(4),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color(0xFF202020),
+                            Color(0xFF6F6F6F),
+                            Color(0xFF999999),
+                            Color(0xFFB1B1B1),
+                            Color(0xFFD9D9D9),
+                          ],
+                          stops: [0.0, 0.25, 0.5, 0.75, 1.0],
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(
+                        Icons.settings,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -214,19 +312,29 @@ class _HomepageScreenState extends State<HomepageScreen> {
 
                 final notes = snapshot.data ?? [];
 
-                // Sort notes based on selected option
-                final sortedNotes = List<Note>.from(notes);
-                switch (_sortOption) {
-                  case 'name':
-                    sortedNotes.sort((a, b) => a.name.compareTo(b.name));
-                    break;
-                  case 'oldest':
-                    sortedNotes.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-                    break;
+                // Filter notes based on selected filter option
+                List<Note> filteredNotes = notes;
+                switch (_filterOption) {
                   case 'recent':
+                    filteredNotes = notes.where((note) {
+                      final difference = DateTime.now().difference(note.updatedAt);
+                      return difference.inDays <= 7; // Show notes from last 7 days
+                    }).toList();
+                    break;
+                  case 'favorites':
+                  // Assuming you have a favorites field in your Note model
+                  // filteredNotes = notes.where((note) => note.isFavorite).toList();
+                    filteredNotes = notes; // For now, show all notes
+                    break;
+                  case 'all':
                   default:
-                    sortedNotes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+                    filteredNotes = notes;
+                    break;
                 }
+
+                // Sort notes based on selected option
+                final sortedNotes = List<Note>.from(filteredNotes);
+                sortedNotes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
                 // Always show the grid/list view with "New Note" card at the beginning
                 if (_viewMode == 'list') {
@@ -243,10 +351,10 @@ class _HomepageScreenState extends State<HomepageScreen> {
 
                 return GridView.builder(
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 0.75,
+                    crossAxisCount: 6, // Increased from 4 to 6 for narrower cards
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.8, // Square-ish aspect ratio
                   ),
                   itemCount: sortedNotes.length + 1,
                   itemBuilder: (context, index) {
@@ -264,34 +372,37 @@ class _HomepageScreenState extends State<HomepageScreen> {
     );
   }
 
+
+
   Widget _buildNewNoteCard(BuildContext context) {
     return InkWell(
       onTap: () => _showCreateNoteDialog(context),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border.all(
             color: Colors.grey[300]!,
-            width: 2,
+            width: 1,
+            style: BorderStyle.solid,
           ),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               Icons.add,
-              size: 48,
+              size: 32,
               color: Colors.grey[400],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Text(
-              'New Note',
+              'New',
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: Colors.grey[600],
+                color: Colors.grey[700],
               ),
             ),
           ],
@@ -301,13 +412,14 @@ class _HomepageScreenState extends State<HomepageScreen> {
   }
 
   Widget _buildNoteCard(BuildContext context, Note note) {
+    // Define card colors similar to the image
     final colors = [
-      Colors.blue[400]!,
-      Colors.green[400]!,
-      Colors.purple[400]!,
-      Colors.orange[400]!,
-      Colors.teal[400]!,
-      Colors.pink[400]!,
+      const Color(0xFF4A3728), // Dark brown
+      const Color(0xFF6B5B95), // Purple
+      const Color(0xFFB19CD9), // Light purple
+      const Color(0xFF8B4513), // Saddle brown
+      const Color(0xFF9370DB), // Medium purple
+      const Color(0xFFDDA0DD), // Plum
     ];
 
     final colorIndex = note.name.hashCode % colors.length;
@@ -316,67 +428,34 @@ class _HomepageScreenState extends State<HomepageScreen> {
     return InkWell(
       onTap: () => _openNote(context, note),
       onLongPress: () => _showNoteOptions(context, note),
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(8),
       child: Container(
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Stack(
           children: [
             // Content
             Positioned.fill(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Icon
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(
-                        Icons.description,
-                        color: Colors.white,
-                        size: 24,
-                      ),
-                    ),
                     const Spacer(),
                     // Title
                     Text(
                       note.name,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
-                      maxLines: 2,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (note.description.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        note.description,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 12,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Text(
                       _formatDate(note.updatedAt),
                       style: TextStyle(
@@ -388,17 +467,18 @@ class _HomepageScreenState extends State<HomepageScreen> {
                 ),
               ),
             ),
-            // More options button
+            // More options button (star icon like in the image)
             Positioned(
               top: 8,
               right: 8,
-              child: IconButton(
-                icon: Icon(
-                  Icons.more_vert,
+              child: InkWell(
+                onTap: () => _showNoteOptions(context, note),
+                borderRadius: BorderRadius.circular(12),
+                child: Icon(
+                  Icons.star_border,
                   color: Colors.white.withOpacity(0.8),
-                  size: 20,
+                  size: 18,
                 ),
-                onPressed: () => _showNoteOptions(context, note),
               ),
             ),
           ],

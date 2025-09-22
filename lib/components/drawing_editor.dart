@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../service/note_service.dart';
+import 'shape_manager.dart';
+import 'image_manager.dart';
+import 'text_manager.dart';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:async';
 
 enum DrawingTool {
@@ -15,22 +17,12 @@ enum DrawingTool {
   pen,
   highlighter,
   eraser,
-  rectangle,
-  circle,
-  line,
-  arrow,
+  shapes,  // Consolidated shapes tool
   text,
   note,
+  camera,  // New camera tool
   magnifier,
   lasso,
-  shapes,
-}
-
-enum ShapeType {
-  rectangle,
-  circle,
-  line,
-  arrow,
 }
 
 class DrawingPoint {
@@ -109,39 +101,6 @@ class DrawingPath {
   }
 }
 
-class TextAnnotation {
-  final Offset position;
-  final String text;
-  final TextStyle style;
-
-  TextAnnotation({
-    required this.position,
-    required this.text,
-    required this.style,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'x': position.dx,
-      'y': position.dy,
-      'text': text,
-      'fontSize': style.fontSize ?? 16.0,
-      'color': style.color?.value ?? Colors.black.value,
-    };
-  }
-
-  factory TextAnnotation.fromJson(Map<String, dynamic> json) {
-    return TextAnnotation(
-      position: Offset(json['x'], json['y']),
-      text: json['text'],
-      style: TextStyle(
-        fontSize: json['fontSize'],
-        color: Color(json['color']),
-      ),
-    );
-  }
-}
-
 class DrawingOverlay extends StatefulWidget {
   final Widget child;
   final Function(Uint8List)? onSave;
@@ -164,14 +123,16 @@ class DrawingOverlay extends StatefulWidget {
 
 class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAliveClientMixin {
   DrawingTool _currentTool = DrawingTool.select;
+  ShapeType _selectedShapeType = ShapeType.rectangle;
   Color _currentColor = Colors.black;
   double _strokeWidth = 2.0;
   double _magnification = 1.0;
   bool _isTextMode = false;
 
-  // Store drawings and annotations per page
+  // Store drawings, annotations and images per page
   Map<int, List<DrawingPath>> _pageDrawings = {};
   Map<int, List<TextAnnotation>> _pageTextAnnotations = {};
+  Map<int, List<ImageAnnotation>> _pageImageAnnotations = {};
   DrawingPath? _currentPath;
 
   // Undo/Redo stacks per page
@@ -191,6 +152,9 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   // Text editing
   TextEditingController _textController = TextEditingController();
   Offset? _textPosition;
+
+  // Image handling
+  Map<String, ui.Image> _loadedImages = {};
 
   // Auto-sync delay
   static const Duration _autoSyncDelay = Duration(seconds: 3);
@@ -221,15 +185,804 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
     super.dispose();
   }
 
-  List<DrawingPath> get _currentPagePaths {
-    return _pageDrawings[widget.currentPage] ?? [];
+  // Getters for current page content
+  List<DrawingPath> get _currentPagePaths => _pageDrawings[widget.currentPage] ?? [];
+  List<TextAnnotation> get _currentPageTextAnnotations => _pageTextAnnotations[widget.currentPage] ?? [];
+  List<ImageAnnotation> get _currentPageImageAnnotations => _pageImageAnnotations[widget.currentPage] ?? [];
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+
+    if (_isLoading) {
+      return Stack(
+        children: [
+          widget.child,
+          const Center(child: CircularProgressIndicator()),
+        ],
+      );
+    }
+
+    return Stack(
+      children: [
+        // PDF Viewer (background)
+        _buildPdfViewer(),
+
+        // Drawing overlay
+        if (_currentTool != DrawingTool.select) _buildDrawingOverlay(),
+
+        // Always show existing drawings
+        if (_currentTool == DrawingTool.select && _hasExistingContent()) _buildExistingContentOverlay(),
+
+        // Toolbar
+        _buildToolbar(),
+
+        // Text input dialog
+        if (_isTextMode && _textPosition != null) _buildTextInputDialog(),
+
+        // Tool indicator
+        if (_currentTool != DrawingTool.select) _buildToolIndicator(),
+      ],
+    );
   }
 
-  List<TextAnnotation> get _currentPageTextAnnotations {
-    return _pageTextAnnotations[widget.currentPage] ?? [];
+  Widget _buildPdfViewer() {
+    return Positioned(
+      top: 70, // Height of toolbar
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Transform.scale(
+        scale: _magnification,
+        child: widget.child,
+      ),
+    );
   }
 
-  // Load drawing state from Firebase with local fallback
+  Widget _buildDrawingOverlay() {
+    return Positioned(
+      top: 70,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: RepaintBoundary(
+        key: _drawingKey,
+        child: GestureDetector(
+          onTapDown: _onTapDown,
+          onPanStart: _onPanStart,
+          onPanUpdate: _onPanUpdate,
+          onPanEnd: _onPanEnd,
+          child: Container(
+            color: Colors.transparent,
+            child: CustomPaint(
+              painter: DrawingPainter(
+                paths: _currentPagePaths,
+                textAnnotations: _currentPageTextAnnotations,
+                imageAnnotations: _currentPageImageAnnotations,
+                loadedImages: _loadedImages,
+                currentPath: _currentPath,
+              ),
+              size: Size.infinite,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool _hasExistingContent() {
+    return _currentPagePaths.isNotEmpty ||
+        _currentPageTextAnnotations.isNotEmpty ||
+        _currentPageImageAnnotations.isNotEmpty;
+  }
+
+  Widget _buildExistingContentOverlay() {
+    return Positioned(
+      top: 70,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: DrawingPainter(
+            paths: _currentPagePaths,
+            textAnnotations: _currentPageTextAnnotations,
+            imageAnnotations: _currentPageImageAnnotations,
+            loadedImages: _loadedImages,
+            currentPath: null,
+          ),
+          size: Size.infinite,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolbar() {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        height: 70,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              const Color(0xFF2C2C2C),
+              const Color(0xFF1A1A1A),
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              children: [
+                // Sync indicator on the left
+                _buildSyncIndicator(),
+
+                // Center all the tools
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Basic tools
+                      _buildBasicToolsSection(),
+                      _buildSeparator(),
+
+                      // Shape tools
+                      _buildShapeToolSection(),
+                      _buildSeparator(),
+
+                      // Annotation tools
+                      _buildAnnotationToolsSection(),
+                      _buildSeparator(),
+
+                      // Camera tools
+                      _buildCameraToolSection(),
+                      _buildSeparator(),
+
+                      // Utility tools
+                      _buildUtilityToolsSection(),
+                      _buildSeparator(),
+
+                      // Action tools (undo, redo, etc.)
+                      _buildActionToolsSection(),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextInputDialog() {
+    return Positioned(
+      left: _textPosition!.dx,
+      top: _textPosition!.dy + 70,
+      child: TextInputDialog(
+        controller: _textController,
+        onAdd: _addTextAnnotation,
+        onCancel: _cancelTextInput,
+      ),
+    );
+  }
+
+  Widget _buildToolIndicator() {
+    return Positioned(
+      bottom: 20,
+      right: 20,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black87,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: _currentColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '${_getToolName(_currentTool)} - Page ${widget.currentPage}',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+            if (_isSyncing || _hasUnsavedChanges) ...[
+              const SizedBox(width: 6),
+              _buildSyncStatusIcon(),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Toolbar sections
+  Widget _buildBasicToolsSection() {
+    return Row(
+      children: [
+        _buildToolButton(
+          icon: Icons.near_me,
+          isSelected: _currentTool == DrawingTool.select,
+          onTap: () => _selectTool(DrawingTool.select),
+          tooltip: 'Select',
+        ),
+        _buildToolButton(
+          icon: Icons.edit,
+          isSelected: _currentTool == DrawingTool.pen,
+          onTap: () => _selectTool(DrawingTool.pen),
+          tooltip: 'Pen',
+        ),
+        _buildToolButton(
+          icon: Icons.brush,
+          isSelected: _currentTool == DrawingTool.highlighter,
+          onTap: () => _selectTool(DrawingTool.highlighter),
+          tooltip: 'Highlighter',
+        ),
+        _buildToolButton(
+          icon: Icons.auto_fix_high,
+          isSelected: _currentTool == DrawingTool.eraser,
+          onTap: () => _selectTool(DrawingTool.eraser),
+          tooltip: 'Eraser',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildShapeToolSection() {
+    return ShapeManager.buildShapeSelector(
+      selectedShapeType: _selectedShapeType,
+      isSelected: _currentTool == DrawingTool.shapes,
+      onShapeSelected: (shapeType) {
+        setState(() {
+          _selectedShapeType = shapeType;
+          _currentTool = DrawingTool.shapes;
+        });
+        _scheduleAutoSync();
+      },
+    );
+  }
+
+  Widget _buildAnnotationToolsSection() {
+    return Row(
+      children: [
+        _buildToolButton(
+          icon: Icons.text_fields,
+          isSelected: _currentTool == DrawingTool.text,
+          onTap: () => _selectTool(DrawingTool.text),
+          tooltip: 'Text',
+        ),
+        _buildToolButton(
+          icon: Icons.sticky_note_2_outlined,
+          isSelected: _currentTool == DrawingTool.note,
+          onTap: () => _selectTool(DrawingTool.note),
+          tooltip: 'Sticky Note',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCameraToolSection() {
+    return ImageManager.buildCameraToolSection(
+      isSelected: _currentTool == DrawingTool.camera,
+      onTakePhoto: _takePicture,
+      onPickFromGallery: _pickImageFromGallery,
+    );
+  }
+
+  Widget _buildUtilityToolsSection() {
+    return Row(
+      children: [
+        _buildToolButton(
+          icon: Icons.search,
+          isSelected: _currentTool == DrawingTool.magnifier,
+          onTap: () => _selectTool(DrawingTool.magnifier),
+          tooltip: 'Magnifier',
+        ),
+        _buildColorPicker(),
+        _buildToolButton(
+          icon: Icons.line_weight,
+          onTap: _showStrokeWidthPicker,
+          tooltip: 'Stroke Width',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionToolsSection() {
+    return Row(
+      children: [
+        _buildToolButton(
+          icon: Icons.undo,
+          onTap: _canUndo() ? _undo : null,
+          tooltip: 'Undo',
+        ),
+        _buildToolButton(
+          icon: Icons.redo,
+          onTap: _canRedo() ? _redo : null,
+          tooltip: 'Redo',
+        ),
+        _buildToolButton(
+          icon: Icons.sync,
+          onTap: _hasUnsavedChanges ? () => _saveDrawingStateToFirebase() : null,
+          tooltip: 'Sync Now',
+        ),
+        _buildToolButton(
+          icon: Icons.more_horiz,
+          onTap: _showMoreOptions,
+          tooltip: 'More Options',
+        ),
+      ],
+    );
+  }
+
+  // Helper widgets
+  Widget _buildToolButton({
+    required IconData icon,
+    bool isSelected = false,
+    required VoidCallback? onTap,
+    required String tooltip,
+    Color? customColor,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(6),
+          child: Container(
+            width: 36,
+            height: 36,
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            decoration: BoxDecoration(
+              color: isSelected ? const Color(0xFF4A9EFF) : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+              border: isSelected ? Border.all(color: const Color(0xFF4A9EFF).withOpacity(0.5)) : null,
+            ),
+            child: Icon(
+              icon,
+              size: 18,
+              color: onTap != null
+                  ? (isSelected ? Colors.white : (customColor ?? const Color(0xFFE0E0E0)))
+                  : const Color(0xFF666666),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColorPicker() {
+    final colors = [
+      Colors.black, Colors.red, Colors.blue, Colors.green, Colors.orange,
+      Colors.purple, Colors.yellow, Colors.brown, Colors.pink, Colors.cyan,
+    ];
+
+    return PopupMenuButton<Color>(
+      child: Container(
+        width: 32,
+        height: 32,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: _currentColor,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: const Color(0xFF555555), width: 1),
+        ),
+        child: _currentColor == Colors.white
+            ? const Icon(Icons.color_lens_outlined, size: 16, color: Colors.grey)
+            : null,
+      ),
+      color: const Color(0xFF2C2C2C),
+      itemBuilder: (context) => colors.map((color) {
+        return PopupMenuItem<Color>(
+          value: color,
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: _currentColor == color ? Colors.white : Colors.transparent,
+                width: 2,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+      onSelected: (color) {
+        setState(() {
+          _currentColor = color;
+        });
+        _scheduleAutoSync();
+      },
+    );
+  }
+
+  Widget _buildSeparator() {
+    return Container(
+      width: 1,
+      height: 32,
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      color: const Color(0xFF444444),
+    );
+  }
+
+  Widget _buildSyncIndicator() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isSyncing)
+            const SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+          else if (_hasUnsavedChanges)
+            const Icon(Icons.cloud_upload, size: 12, color: Colors.orange)
+          else
+            Icon(Icons.cloud_done, size: 12, color: _lastSyncTime != null ? Colors.green : Colors.grey),
+          const SizedBox(width: 4),
+          Text(
+            _isSyncing ? 'Syncing...' : (_hasUnsavedChanges ? 'Saving...' : 'Synced'),
+            style: const TextStyle(color: Colors.white, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSyncStatusIcon() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_isSyncing)
+            const SizedBox(
+              width: 8,
+              height: 8,
+              child: CircularProgressIndicator(
+                strokeWidth: 1,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+          else if (_hasUnsavedChanges)
+            const Icon(Icons.cloud_upload, size: 8, color: Colors.orange)
+          else
+            Icon(Icons.cloud_done, size: 8, color: _lastSyncTime != null ? Colors.green : Colors.grey),
+          const SizedBox(width: 2),
+          Text(
+            _isSyncing ? 'Sync' : (_hasUnsavedChanges ? 'Save' : 'OK'),
+            style: const TextStyle(color: Colors.white, fontSize: 8),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Event handlers
+  void _onTapDown(TapDownDetails details) {
+    if (_currentTool == DrawingTool.text) {
+      setState(() {
+        _textPosition = details.localPosition;
+        _isTextMode = true;
+      });
+    } else if (_currentTool == DrawingTool.magnifier) {
+      _handleMagnification(details.localPosition);
+    }
+  }
+
+  void _onPanStart(DragStartDetails details) {
+    if (_currentTool == DrawingTool.select || _currentTool == DrawingTool.text || _currentTool == DrawingTool.camera) return;
+
+    _pushToUndoStack();
+    final paint = _createPaintForTool(_currentTool);
+
+    _currentPath = DrawingPath(
+      points: [DrawingPoint(offset: details.localPosition, paint: paint)],
+      paint: paint,
+      tool: _currentTool,
+      shapeType: _currentTool == DrawingTool.shapes ? _selectedShapeType : null,
+    );
+
+    setState(() {});
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    if (_currentPath == null) return;
+
+    if (_currentTool == DrawingTool.shapes) {
+      // For shapes, we only need start and end points
+      if (_currentPath!.points.length > 1) {
+        _currentPath!.points.removeLast();
+      }
+      _currentPath!.points.add(
+        DrawingPoint(offset: details.localPosition, paint: _currentPath!.paint),
+      );
+    } else {
+      // For free drawing tools
+      _currentPath!.points.add(
+        DrawingPoint(offset: details.localPosition, paint: _currentPath!.paint),
+      );
+    }
+
+    setState(() {});
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    if (_currentPath != null) {
+      if (_pageDrawings[widget.currentPage] == null) {
+        _pageDrawings[widget.currentPage] = [];
+      }
+      _pageDrawings[widget.currentPage]!.add(_currentPath!);
+      _currentPath = null;
+      setState(() {});
+      _scheduleAutoSync();
+    }
+  }
+
+  Paint _createPaintForTool(DrawingTool tool) {
+    final paint = Paint()
+      ..strokeWidth = _strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    switch (tool) {
+      case DrawingTool.pen:
+        paint.color = _currentColor;
+        break;
+      case DrawingTool.highlighter:
+        paint.color = _currentColor.withOpacity(0.4);
+        paint.strokeWidth = _strokeWidth * 3;
+        break;
+      case DrawingTool.eraser:
+        paint.color = Colors.white;
+        paint.blendMode = BlendMode.clear;
+        paint.strokeWidth = _strokeWidth * 2;
+        break;
+      case DrawingTool.shapes:
+        paint.color = _currentColor;
+        paint.style = PaintingStyle.stroke;
+        break;
+      default:
+        paint.color = _currentColor;
+    }
+
+    return paint;
+  }
+
+  // Tool management
+  void _selectTool(DrawingTool tool) {
+    setState(() {
+      _currentTool = tool;
+      _isTextMode = tool == DrawingTool.text;
+      if (!_isTextMode) {
+        _textPosition = null;
+      }
+    });
+  }
+
+  String _getToolName(DrawingTool tool) {
+    switch (tool) {
+      case DrawingTool.select: return 'Select';
+      case DrawingTool.pen: return 'Pen';
+      case DrawingTool.highlighter: return 'Highlighter';
+      case DrawingTool.eraser: return 'Eraser';
+      case DrawingTool.shapes: return 'Shapes';
+      case DrawingTool.text: return 'Text';
+      case DrawingTool.note: return 'Note';
+      case DrawingTool.camera: return 'Camera';
+      case DrawingTool.magnifier: return 'Magnifier';
+      case DrawingTool.lasso: return 'Lasso';
+      default: return 'Tool';
+    }
+  }
+
+  // Text management
+  void _addTextAnnotation() {
+    if (TextManager.validateTextInput(_textController.text) && _textPosition != null) {
+      _pushToUndoStack();
+
+      if (_pageTextAnnotations[widget.currentPage] == null) {
+        _pageTextAnnotations[widget.currentPage] = [];
+      }
+
+      final textAnnotation = TextManager.createTextAnnotation(
+        position: _textPosition!,
+        text: _textController.text,
+        color: _currentColor,
+      );
+
+      _pageTextAnnotations[widget.currentPage]!.add(textAnnotation);
+
+      _textController.clear();
+      setState(() {
+        _textPosition = null;
+        _isTextMode = false;
+      });
+
+      _scheduleAutoSync();
+    }
+  }
+
+  void _cancelTextInput() {
+    setState(() {
+      _textPosition = null;
+      _isTextMode = false;
+    });
+    _textController.clear();
+  }
+
+  // Image management
+  Future<void> _takePicture() async {
+    final imagePath = await ImageManager.takePicture();
+    if (imagePath != null) {
+      await _addImageToCurrentPage(imagePath);
+    } else {
+      _showErrorSnackBar('Failed to take picture');
+    }
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    final imagePath = await ImageManager.pickImageFromGallery();
+    if (imagePath != null) {
+      await _addImageToCurrentPage(imagePath);
+    } else {
+      _showErrorSnackBar('Failed to pick image from gallery');
+    }
+  }
+
+  Future<void> _addImageToCurrentPage(String imagePath) async {
+    try {
+      final screenSize = MediaQuery.of(context).size;
+      final imageAnnotation = await ImageManager.createImageAnnotation(imagePath, screenSize);
+
+      if (imageAnnotation != null) {
+        // Load and store the image
+        final image = await ImageManager.loadImageFromPath(imagePath);
+        if (image != null) {
+          _loadedImages[imagePath] = image;
+        }
+
+        _pushToUndoStack();
+
+        if (_pageImageAnnotations[widget.currentPage] == null) {
+          _pageImageAnnotations[widget.currentPage] = [];
+        }
+
+        _pageImageAnnotations[widget.currentPage]!.add(imageAnnotation);
+        setState(() {});
+        _scheduleAutoSync();
+
+        _showSuccessSnackBar('Image added successfully');
+      }
+    } catch (e) {
+      _showErrorSnackBar('Failed to add image: $e');
+    }
+  }
+
+  // Undo/Redo functionality
+  void _pushToUndoStack() {
+    final pageNum = widget.currentPage;
+    if (_undoStacks[pageNum] == null) _undoStacks[pageNum] = [];
+
+    _undoStacks[pageNum]!.add(List<DrawingPath>.from(_currentPagePaths));
+
+    if (_undoStacks[pageNum]!.length > 50) {
+      _undoStacks[pageNum]!.removeAt(0);
+    }
+
+    _redoStacks[pageNum] = [];
+  }
+
+  bool _canUndo() => _undoStacks[widget.currentPage]?.isNotEmpty ?? false;
+  bool _canRedo() => _redoStacks[widget.currentPage]?.isNotEmpty ?? false;
+
+  void _undo() {
+    final pageNum = widget.currentPage;
+    final undoStack = _undoStacks[pageNum];
+
+    if (undoStack != null && undoStack.isNotEmpty) {
+      if (_redoStacks[pageNum] == null) _redoStacks[pageNum] = [];
+      _redoStacks[pageNum]!.add(List<DrawingPath>.from(_currentPagePaths));
+
+      final previousState = undoStack.removeLast();
+      _pageDrawings[pageNum] = List<DrawingPath>.from(previousState);
+
+      setState(() {});
+      _scheduleAutoSync();
+    }
+  }
+
+  void _redo() {
+    final pageNum = widget.currentPage;
+    final redoStack = _redoStacks[pageNum];
+
+    if (redoStack != null && redoStack.isNotEmpty) {
+      if (_undoStacks[pageNum] == null) _undoStacks[pageNum] = [];
+      _undoStacks[pageNum]!.add(List<DrawingPath>.from(_currentPagePaths));
+
+      final nextState = redoStack.removeLast();
+      _pageDrawings[pageNum] = List<DrawingPath>.from(nextState);
+
+      setState(() {});
+      _scheduleAutoSync();
+    }
+  }
+
+  // Other handlers
+  void _handleMagnification(Offset position) {
+    setState(() {
+      _magnification = _magnification == 1.0 ? 1.5 : 1.0;
+    });
+  }
+
+  void _showStrokeWidthPicker() {
+    // Implementation for stroke width picker dialog
+  }
+
+  void _showMoreOptions() {
+    // Implementation for more options dialog
+  }
+
+  // Utility methods
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.green, duration: const Duration(seconds: 2)),
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red, duration: const Duration(seconds: 2)),
+    );
+  }
+
+  void _scheduleAutoSync() {
+    _hasUnsavedChanges = true;
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer(_autoSyncDelay, () {
+      _saveDrawingStateToFirebase();
+    });
+  }
+
+  // Data persistence methods - now properly implemented
   Future<void> _loadDrawingStateFromFirebase() async {
     try {
       setState(() {
@@ -289,18 +1042,46 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
         });
       }
 
+      // Parse image annotations
+      if (drawingData['images'] != null) {
+        final imagesMap = drawingData['images'] as Map<String, dynamic>;
+        _pageImageAnnotations.clear();
+
+        imagesMap.forEach((pageStr, imagesList) {
+          final pageNum = int.parse(pageStr);
+          final List<ImageAnnotation> images = (imagesList as List)
+              .map((i) => ImageAnnotation.fromJson(i))
+              .toList();
+          _pageImageAnnotations[pageNum] = images;
+        });
+
+        // Load images
+        await _loadImagesFromAnnotations();
+      }
+
       // Parse drawing settings
       if (drawingData['settings'] != null) {
         final settings = drawingData['settings'] as Map<String, dynamic>;
         _currentColor = Color(settings['color'] ?? Colors.black.value);
         _strokeWidth = (settings['strokeWidth'] ?? 2.0).toDouble();
+        _selectedShapeType = ShapeType.values[settings['selectedShapeType'] ?? 0];
       }
     } catch (e) {
       print('Error parsing drawing data: $e');
     }
   }
 
-  // Save drawing state to Firebase with local backup
+  Future<void> _loadImagesFromAnnotations() async {
+    for (final imageAnnotations in _pageImageAnnotations.values) {
+      for (final imageAnnotation in imageAnnotations) {
+        final image = await ImageManager.loadImageFromPath(imageAnnotation.imagePath);
+        if (image != null) {
+          _loadedImages[imageAnnotation.imagePath] = image;
+        }
+      }
+    }
+  }
+
   Future<void> _saveDrawingStateToFirebase() async {
     if (_isSyncing || !_hasUnsavedChanges) return;
 
@@ -362,9 +1143,11 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
     final Map<String, dynamic> drawingData = {
       'drawings': {},
       'texts': {},
+      'images': {},
       'settings': {
         'color': _currentColor.value,
         'strokeWidth': _strokeWidth,
+        'selectedShapeType': _selectedShapeType.index,
       },
       'lastModified': DateTime.now().toIso8601String(),
     };
@@ -385,15 +1168,15 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       }
     });
 
-    return drawingData;
-  }
-
-  void _scheduleAutoSync() {
-    _hasUnsavedChanges = true;
-    _autoSyncTimer?.cancel();
-    _autoSyncTimer = Timer(_autoSyncDelay, () {
-      _saveDrawingStateToFirebase();
+    // Convert image annotations
+    _pageImageAnnotations.forEach((pageNum, images) {
+      if (images.isNotEmpty) {
+        drawingData['images'][pageNum.toString()] =
+            images.map((i) => i.toJson()).toList();
+      }
     });
+
+    return drawingData;
   }
 
   // Keep local storage methods as backup
@@ -402,8 +1185,10 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       final prefs = await SharedPreferences.getInstance();
       final String key = 'page_drawings_${widget.noteId}';
       final String textKey = 'page_texts_${widget.noteId}';
+      final String imageKey = 'page_images_${widget.noteId}';
       final String? drawingsJson = prefs.getString(key);
       final String? textsJson = prefs.getString(textKey);
+      final String? imagesJson = prefs.getString(imageKey);
 
       if (drawingsJson != null) {
         final Map<String, dynamic> drawingsMap = json.decode(drawingsJson);
@@ -431,8 +1216,24 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
         });
       }
 
+      if (imagesJson != null) {
+        final Map<String, dynamic> imagesMap = json.decode(imagesJson);
+        _pageImageAnnotations.clear();
+
+        imagesMap.forEach((pageStr, imagesList) {
+          final pageNum = int.parse(pageStr);
+          final List<ImageAnnotation> images = (imagesList as List)
+              .map((i) => ImageAnnotation.fromJson(i))
+              .toList();
+          _pageImageAnnotations[pageNum] = images;
+        });
+
+        await _loadImagesFromAnnotations();
+      }
+
       _currentColor = Color(prefs.getInt('drawing_color_${widget.noteId}') ?? Colors.black.value);
       _strokeWidth = prefs.getDouble('drawing_stroke_${widget.noteId}') ?? 2.0;
+      _selectedShapeType = ShapeType.values[prefs.getInt('selected_shape_${widget.noteId}') ?? 0];
 
     } catch (e) {
       print('Error loading drawing state locally: $e');
@@ -444,6 +1245,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       final prefs = await SharedPreferences.getInstance();
       final String key = 'page_drawings_${widget.noteId}';
       final String textKey = 'page_texts_${widget.noteId}';
+      final String imageKey = 'page_images_${widget.noteId}';
 
       // Save drawings
       if (_pageDrawings.isNotEmpty) {
@@ -481,8 +1283,27 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
         await prefs.remove(textKey);
       }
 
+      // Save image annotations
+      if (_pageImageAnnotations.isNotEmpty) {
+        final Map<String, dynamic> imagesMap = {};
+        _pageImageAnnotations.forEach((pageNum, images) {
+          if (images.isNotEmpty) {
+            imagesMap[pageNum.toString()] = images.map((i) => i.toJson()).toList();
+          }
+        });
+
+        if (imagesMap.isNotEmpty) {
+          await prefs.setString(imageKey, json.encode(imagesMap));
+        } else {
+          await prefs.remove(imageKey);
+        }
+      } else {
+        await prefs.remove(imageKey);
+      }
+
       await prefs.setInt('drawing_color_${widget.noteId}', _currentColor.value);
       await prefs.setDouble('drawing_stroke_${widget.noteId}', _strokeWidth);
+      await prefs.setInt('selected_shape_${widget.noteId}', _selectedShapeType.index);
 
     } catch (e) {
       print('Error saving drawing state locally: $e');
@@ -495,1158 +1316,26 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
 
   void _saveCurrentPageDrawing(int pageNumber) {
     if (_pageDrawings[pageNumber]?.isNotEmpty == true ||
-        _pageTextAnnotations[pageNumber]?.isNotEmpty == true) {
+        _pageTextAnnotations[pageNumber]?.isNotEmpty == true ||
+        _pageImageAnnotations[pageNumber]?.isNotEmpty == true) {
       _scheduleAutoSync();
     }
-  }
-
-  void _pushToUndoStack() {
-    final pageNum = widget.currentPage;
-    if (_undoStacks[pageNum] == null) _undoStacks[pageNum] = [];
-
-    _undoStacks[pageNum]!.add(List<DrawingPath>.from(_currentPagePaths));
-
-    // Limit undo stack size
-    if (_undoStacks[pageNum]!.length > 50) {
-      _undoStacks[pageNum]!.removeAt(0);
-    }
-
-    // Clear redo stack when new action is performed
-    _redoStacks[pageNum] = [];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-
-    if (_isLoading) {
-      return Stack(
-        children: [
-          widget.child,
-          const Center(child: CircularProgressIndicator()),
-        ],
-      );
-    }
-
-    final currentPagePaths = _currentPagePaths;
-    final currentPageTexts = _currentPageTextAnnotations;
-
-    return Stack(
-      children: [
-        // PDF Viewer (background)
-        Positioned(
-          top: 70, // Height of toolbar
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: Transform.scale(
-            scale: _magnification,
-            child: widget.child,
-          ),
-        ),
-
-        // Drawing overlay
-        if (_currentTool != DrawingTool.select)
-          Positioned(
-            top: 70,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: RepaintBoundary(
-              key: _drawingKey,
-              child: GestureDetector(
-                onTapDown: _onTapDown,
-                onPanStart: _onPanStart,
-                onPanUpdate: _onPanUpdate,
-                onPanEnd: _onPanEnd,
-                child: Container(
-                  color: Colors.transparent,
-                  child: CustomPaint(
-                    painter: DrawingPainter(
-                      paths: currentPagePaths,
-                      textAnnotations: currentPageTexts,
-                      currentPath: _currentPath,
-                    ),
-                    size: Size.infinite,
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-        // Always show existing drawings
-        if (_currentTool == DrawingTool.select && (currentPagePaths.isNotEmpty || currentPageTexts.isNotEmpty))
-          Positioned(
-            top: 70,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: DrawingPainter(
-                  paths: currentPagePaths,
-                  textAnnotations: currentPageTexts,
-                  currentPath: null,
-                ),
-                size: Size.infinite,
-              ),
-            ),
-          ),
-
-        // Enhanced Toolbar
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: _buildExactToolbar(),
-        ),
-
-        // Text input dialog
-        if (_isTextMode && _textPosition != null)
-          Positioned(
-            left: _textPosition!.dx,
-            top: _textPosition!.dy + 70,
-            child: _buildTextInput(),
-          ),
-
-        // Tool indicator with sync status
-        if (_currentTool != DrawingTool.select)
-          Positioned(
-            bottom: 20,
-            right: 20,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: _currentColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${_getToolName(_currentTool)} - Page ${widget.currentPage}',
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                  if (_isSyncing || _hasUnsavedChanges) ...[
-                    const SizedBox(width: 6),
-                    _buildSyncIndicator(),
-                  ],
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildSyncIndicator() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_isSyncing)
-            const SizedBox(
-              width: 8,
-              height: 8,
-              child: CircularProgressIndicator(
-                strokeWidth: 1,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            )
-          else if (_hasUnsavedChanges)
-            const Icon(
-              Icons.cloud_upload,
-              size: 8,
-              color: Colors.orange,
-            )
-          else
-            Icon(
-              Icons.cloud_done,
-              size: 8,
-              color: _lastSyncTime != null ? Colors.green : Colors.grey,
-            ),
-          const SizedBox(width: 2),
-          Text(
-            _isSyncing ? 'Sync' : (_hasUnsavedChanges ? 'Save' : 'OK'),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 8,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildExactToolbar() {
-    return Container(
-      height: 70,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFF2C2C2C),
-            const Color(0xFF1A1A1A),
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          child: Row(
-            children: [
-              // Navigation tools
-              _buildNavSection(),
-              _buildSeparator(),
-
-              // Selection and basic tools
-              _buildBasicToolsSection(),
-              _buildSeparator(),
-
-              // Drawing tools
-              _buildDrawingToolsSection(),
-              _buildSeparator(),
-
-              // Shape tools
-              _buildShapeToolsSection(),
-              _buildSeparator(),
-
-              // Text and annotation tools
-              _buildAnnotationToolsSection(),
-              _buildSeparator(),
-
-              // Utility tools
-              _buildUtilityToolsSection(),
-
-              const Spacer(),
-
-              // Sync indicator
-              _buildTopSyncIndicator(),
-              const SizedBox(width: 8),
-
-              // Action tools
-              _buildActionToolsSection(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopSyncIndicator() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (_isSyncing)
-            const SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            )
-          else if (_hasUnsavedChanges)
-            const Icon(
-              Icons.cloud_upload,
-              size: 12,
-              color: Colors.orange,
-            )
-          else
-            Icon(
-              Icons.cloud_done,
-              size: 12,
-              color: _lastSyncTime != null ? Colors.green : Colors.grey,
-            ),
-          const SizedBox(width: 4),
-          Text(
-            _isSyncing ? 'Syncing...' : (_hasUnsavedChanges ? 'Saving...' : 'Synced'),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavSection() {
-    return Row(
-      children: [
-        _buildToolButton(
-          icon: Icons.arrow_back_ios,
-          onTap: () {},
-          tooltip: 'Back',
-        ),
-        _buildToolButton(
-          icon: Icons.arrow_forward_ios,
-          onTap: () {},
-          tooltip: 'Forward',
-        ),
-        _buildToolButton(
-          icon: Icons.fullscreen,
-          onTap: () {},
-          tooltip: 'Fullscreen',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBasicToolsSection() {
-    return Row(
-      children: [
-        _buildToolButton(
-          icon: Icons.near_me,
-          isSelected: _currentTool == DrawingTool.select,
-          onTap: () => _selectTool(DrawingTool.select),
-          tooltip: 'Select',
-        ),
-        _buildToolButton(
-          icon: Icons.edit,
-          isSelected: _currentTool == DrawingTool.pen,
-          onTap: () => _selectTool(DrawingTool.pen),
-          tooltip: 'Pen',
-        ),
-        _buildToolButton(
-          icon: Icons.brush,
-          isSelected: _currentTool == DrawingTool.highlighter,
-          onTap: () => _selectTool(DrawingTool.highlighter),
-          tooltip: 'Highlighter',
-        ),
-        _buildToolButton(
-          icon: Icons.auto_fix_high,
-          isSelected: _currentTool == DrawingTool.eraser,
-          onTap: () => _selectTool(DrawingTool.eraser),
-          tooltip: 'Eraser',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDrawingToolsSection() {
-    return Row(
-      children: [
-        _buildToolButton(
-          icon: Icons.crop_free,
-          isSelected: _currentTool == DrawingTool.lasso,
-          onTap: () => _selectTool(DrawingTool.lasso),
-          tooltip: 'Lasso',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildShapeToolsSection() {
-    return Row(
-      children: [
-        _buildToolButton(
-          icon: Icons.crop_square,
-          isSelected: _currentTool == DrawingTool.rectangle,
-          onTap: () => _selectTool(DrawingTool.rectangle),
-          tooltip: 'Rectangle',
-        ),
-        _buildToolButton(
-          icon: Icons.circle_outlined,
-          isSelected: _currentTool == DrawingTool.circle,
-          onTap: () => _selectTool(DrawingTool.circle),
-          tooltip: 'Circle',
-        ),
-        _buildToolButton(
-          icon: Icons.horizontal_rule,
-          isSelected: _currentTool == DrawingTool.line,
-          onTap: () => _selectTool(DrawingTool.line),
-          tooltip: 'Line',
-        ),
-        _buildToolButton(
-          icon: Icons.arrow_forward,
-          isSelected: _currentTool == DrawingTool.arrow,
-          onTap: () => _selectTool(DrawingTool.arrow),
-          tooltip: 'Arrow',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAnnotationToolsSection() {
-    return Row(
-      children: [
-        _buildToolButton(
-          icon: Icons.text_fields,
-          isSelected: _currentTool == DrawingTool.text,
-          onTap: () => _selectTool(DrawingTool.text),
-          tooltip: 'Text',
-        ),
-        _buildToolButton(
-          icon: Icons.sticky_note_2_outlined,
-          isSelected: _currentTool == DrawingTool.note,
-          onTap: () => _selectTool(DrawingTool.note),
-          tooltip: 'Sticky Note',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildUtilityToolsSection() {
-    return Row(
-      children: [
-        _buildToolButton(
-          icon: Icons.search,
-          isSelected: _currentTool == DrawingTool.magnifier,
-          onTap: () => _selectTool(DrawingTool.magnifier),
-          tooltip: 'Magnifier',
-        ),
-        _buildColorPicker(),
-        _buildToolButton(
-          icon: Icons.line_weight,
-          onTap: _showStrokeWidthPicker,
-          tooltip: 'Stroke Width',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionToolsSection() {
-    return Row(
-      children: [
-        _buildToolButton(
-          icon: Icons.undo,
-          onTap: _canUndo() ? _undo : null,
-          tooltip: 'Undo',
-        ),
-        _buildToolButton(
-          icon: Icons.redo,
-          onTap: _canRedo() ? _redo : null,
-          tooltip: 'Redo',
-        ),
-        _buildToolButton(
-          icon: Icons.sync,
-          onTap: _hasUnsavedChanges ? () => _saveDrawingStateToFirebase() : null,
-          tooltip: 'Sync Now',
-        ),
-        _buildToolButton(
-          icon: Icons.more_horiz,
-          onTap: _showMoreOptions,
-          tooltip: 'More Options',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildToolButton({
-    required IconData icon,
-    bool isSelected = false,
-    required VoidCallback? onTap,
-    required String tooltip,
-    Color? customColor,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(6),
-          child: Container(
-            width: 36,
-            height: 36,
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? const Color(0xFF4A9EFF)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(6),
-              border: isSelected
-                  ? Border.all(color: const Color(0xFF4A9EFF).withOpacity(0.5))
-                  : null,
-            ),
-            child: Icon(
-              icon,
-              size: 18,
-              color: onTap != null
-                  ? (isSelected ? Colors.white : (customColor ?? const Color(0xFFE0E0E0)))
-                  : const Color(0xFF666666),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildColorPicker() {
-    final colors = [
-      Colors.black,
-      Colors.red,
-      Colors.blue,
-      Colors.green,
-      Colors.orange,
-      Colors.purple,
-      Colors.yellow,
-      Colors.brown,
-      Colors.pink,
-      Colors.cyan,
-    ];
-
-    return PopupMenuButton<Color>(
-      child: Container(
-        width: 32,
-        height: 32,
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        decoration: BoxDecoration(
-          color: _currentColor,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFF555555), width: 1),
-        ),
-        child: _currentColor == Colors.white
-            ? const Icon(Icons.color_lens_outlined, size: 16, color: Colors.grey)
-            : null,
-      ),
-      color: const Color(0xFF2C2C2C),
-      itemBuilder: (context) => colors.map((color) {
-        return PopupMenuItem<Color>(
-          value: color,
-          child: Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: _currentColor == color ? Colors.white : Colors.transparent,
-                width: 2,
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-      onSelected: (color) {
-        setState(() {
-          _currentColor = color;
-        });
-        _scheduleAutoSync();
-      },
-    );
-  }
-
-  Widget _buildSeparator() {
-    return Container(
-      width: 1,
-      height: 32,
-      margin: const EdgeInsets.symmetric(horizontal: 6),
-      color: const Color(0xFF444444),
-    );
-  }
-
-  Widget _buildTextInput() {
-    return Material(
-      elevation: 8,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: 200,
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _textController,
-              autofocus: true,
-              decoration: const InputDecoration(
-                hintText: 'Enter text...',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                ElevatedButton(
-                  onPressed: _addTextAnnotation,
-                  child: const Text('Add'),
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: _cancelTextInput,
-                  child: const Text('Cancel'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _selectTool(DrawingTool tool) {
-    setState(() {
-      _currentTool = tool;
-      _isTextMode = tool == DrawingTool.text;
-      if (!_isTextMode) {
-        _textPosition = null;
-      }
-    });
-  }
-
-  String _getToolName(DrawingTool tool) {
-    switch (tool) {
-      case DrawingTool.select: return 'Select';
-      case DrawingTool.pen: return 'Pen';
-      case DrawingTool.highlighter: return 'Highlighter';
-      case DrawingTool.eraser: return 'Eraser';
-      case DrawingTool.rectangle: return 'Rectangle';
-      case DrawingTool.circle: return 'Circle';
-      case DrawingTool.line: return 'Line';
-      case DrawingTool.arrow: return 'Arrow';
-      case DrawingTool.text: return 'Text';
-      case DrawingTool.note: return 'Note';
-      case DrawingTool.magnifier: return 'Magnifier';
-      case DrawingTool.lasso: return 'Lasso';
-      default: return 'Tool';
-    }
-  }
-
-  void _onTapDown(TapDownDetails details) {
-    if (_currentTool == DrawingTool.text) {
-      setState(() {
-        _textPosition = details.localPosition;
-        _isTextMode = true;
-      });
-    } else if (_currentTool == DrawingTool.magnifier) {
-      _handleMagnification(details.localPosition);
-    }
-  }
-
-  void _onPanStart(DragStartDetails details) {
-    if (_currentTool == DrawingTool.select || _currentTool == DrawingTool.text) return;
-
-    _pushToUndoStack();
-
-    final paint = Paint()
-      ..strokeWidth = _strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    switch (_currentTool) {
-      case DrawingTool.pen:
-        paint.color = _currentColor;
-        break;
-      case DrawingTool.highlighter:
-        paint.color = _currentColor.withOpacity(0.4);
-        paint.strokeWidth = _strokeWidth * 3;
-        break;
-      case DrawingTool.eraser:
-        paint.color = Colors.white;
-        paint.blendMode = BlendMode.clear;
-        paint.strokeWidth = _strokeWidth * 2;
-        break;
-      case DrawingTool.rectangle:
-      case DrawingTool.circle:
-      case DrawingTool.line:
-      case DrawingTool.arrow:
-        paint.color = _currentColor;
-        paint.style = PaintingStyle.stroke;
-        break;
-      default:
-        return;
-    }
-
-    _currentPath = DrawingPath(
-      points: [DrawingPoint(offset: details.localPosition, paint: paint)],
-      paint: paint,
-      tool: _currentTool,
-      shapeType: _getShapeType(),
-    );
-
-    setState(() {});
-  }
-
-  void _onPanUpdate(DragUpdateDetails details) {
-    if (_currentPath == null) return;
-
-    if (_isShapeTool(_currentTool)) {
-      // For shapes, we only need start and end points
-      if (_currentPath!.points.length > 1) {
-        _currentPath!.points.removeLast();
-      }
-      _currentPath!.points.add(
-        DrawingPoint(offset: details.localPosition, paint: _currentPath!.paint),
-      );
-    } else {
-      // For free drawing tools
-      _currentPath!.points.add(
-        DrawingPoint(offset: details.localPosition, paint: _currentPath!.paint),
-      );
-    }
-
-    setState(() {});
-  }
-
-  void _onPanEnd(DragEndDetails details) {
-    if (_currentPath != null) {
-      if (_pageDrawings[widget.currentPage] == null) {
-        _pageDrawings[widget.currentPage] = [];
-      }
-      _pageDrawings[widget.currentPage]!.add(_currentPath!);
-      _currentPath = null;
-      setState(() {});
-      _scheduleAutoSync();
-    }
-  }
-
-  bool _isShapeTool(DrawingTool tool) {
-    return [
-      DrawingTool.rectangle,
-      DrawingTool.circle,
-      DrawingTool.line,
-      DrawingTool.arrow,
-    ].contains(tool);
-  }
-
-  ShapeType? _getShapeType() {
-    switch (_currentTool) {
-      case DrawingTool.rectangle:
-        return ShapeType.rectangle;
-      case DrawingTool.circle:
-        return ShapeType.circle;
-      case DrawingTool.line:
-        return ShapeType.line;
-      case DrawingTool.arrow:
-        return ShapeType.arrow;
-      default:
-        return null;
-    }
-  }
-
-  void _addTextAnnotation() {
-    if (_textController.text.isNotEmpty && _textPosition != null) {
-      _pushToUndoStack();
-
-      if (_pageTextAnnotations[widget.currentPage] == null) {
-        _pageTextAnnotations[widget.currentPage] = [];
-      }
-
-      _pageTextAnnotations[widget.currentPage]!.add(
-        TextAnnotation(
-          position: _textPosition!,
-          text: _textController.text,
-          style: TextStyle(
-            color: _currentColor,
-            fontSize: 16.0,
-          ),
-        ),
-      );
-
-      _textController.clear();
-      setState(() {
-        _textPosition = null;
-        _isTextMode = false;
-      });
-
-      _scheduleAutoSync();
-    }
-  }
-
-  void _cancelTextInput() {
-    setState(() {
-      _textPosition = null;
-      _isTextMode = false;
-    });
-    _textController.clear();
-  }
-
-  void _handleMagnification(Offset position) {
-    setState(() {
-      _magnification = _magnification == 1.0 ? 1.5 : 1.0;
-    });
-  }
-
-  bool _canUndo() {
-    final undoStack = _undoStacks[widget.currentPage];
-    return undoStack != null && undoStack.isNotEmpty;
-  }
-
-  bool _canRedo() {
-    final redoStack = _redoStacks[widget.currentPage];
-    return redoStack != null && redoStack.isNotEmpty;
-  }
-
-  void _undo() {
-    final pageNum = widget.currentPage;
-    final undoStack = _undoStacks[pageNum];
-
-    if (undoStack != null && undoStack.isNotEmpty) {
-      // Push current state to redo stack
-      if (_redoStacks[pageNum] == null) _redoStacks[pageNum] = [];
-      _redoStacks[pageNum]!.add(List<DrawingPath>.from(_currentPagePaths));
-
-      // Restore previous state
-      final previousState = undoStack.removeLast();
-      _pageDrawings[pageNum] = List<DrawingPath>.from(previousState);
-
-      setState(() {});
-      _scheduleAutoSync();
-    }
-  }
-
-  void _redo() {
-    final pageNum = widget.currentPage;
-    final redoStack = _redoStacks[pageNum];
-
-    if (redoStack != null && redoStack.isNotEmpty) {
-      // Push current state to undo stack
-      if (_undoStacks[pageNum] == null) _undoStacks[pageNum] = [];
-      _undoStacks[pageNum]!.add(List<DrawingPath>.from(_currentPagePaths));
-
-      // Restore next state
-      final nextState = redoStack.removeLast();
-      _pageDrawings[pageNum] = List<DrawingPath>.from(nextState);
-
-      setState(() {});
-      _scheduleAutoSync();
-    }
-  }
-
-  void _showStrokeWidthPicker() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2C),
-        title: const Text('Stroke Width', style: TextStyle(color: Colors.white)),
-        content: StatefulBuilder(
-          builder: (context, setDialogState) => Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Width: ${_strokeWidth.toInt()}px',
-                style: const TextStyle(color: Colors.white),
-              ),
-              const SizedBox(height: 16),
-              SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: const Color(0xFF4A9EFF),
-                  inactiveTrackColor: const Color(0xFF555555),
-                  thumbColor: const Color(0xFF4A9EFF),
-                  overlayColor: const Color(0xFF4A9EFF).withOpacity(0.2),
-                ),
-                child: Slider(
-                  value: _strokeWidth,
-                  min: 1.0,
-                  max: 15.0,
-                  divisions: 14,
-                  onChanged: (value) {
-                    setDialogState(() {
-                      _strokeWidth = value;
-                    });
-                    setState(() {});
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Preview
-              Container(
-                height: 50,
-                width: 200,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: CustomPaint(
-                  painter: StrokePreviewPainter(
-                    color: _currentColor,
-                    strokeWidth: _strokeWidth,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _scheduleAutoSync();
-            },
-            child: const Text('Done', style: TextStyle(color: Color(0xFF4A9EFF))),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showMoreOptions() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2C),
-        title: const Text('More Options', style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildOptionTile(
-              icon: Icons.sync,
-              title: 'Sync Now',
-              subtitle: 'Force sync to Firebase',
-              onTap: () {
-                Navigator.pop(context);
-                _saveDrawingStateToFirebase();
-              },
-            ),
-            _buildOptionTile(
-              icon: Icons.clear_all,
-              title: 'Clear Current Page',
-              subtitle: 'Remove all drawings and annotations',
-              onTap: () {
-                Navigator.pop(context);
-                _showClearCurrentPageDialog();
-              },
-            ),
-            _buildOptionTile(
-              icon: Icons.delete_forever,
-              title: 'Clear All Pages',
-              subtitle: 'Remove all drawings from document',
-              onTap: () {
-                Navigator.pop(context);
-                _showClearAllPagesDialog();
-              },
-            ),
-            _buildOptionTile(
-              icon: Icons.save,
-              title: 'Export Annotations',
-              subtitle: 'Save annotations to file',
-              onTap: () {
-                Navigator.pop(context);
-                _exportAnnotations();
-              },
-            ),
-            _buildOptionTile(
-              icon: Icons.settings,
-              title: 'Tool Settings',
-              subtitle: 'Customize tool behavior',
-              onTap: () {
-                Navigator.pop(context);
-                _showToolSettings();
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close', style: TextStyle(color: Color(0xFF4A9EFF))),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOptionTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: const Color(0xFFE0E0E0)),
-      title: Text(title, style: const TextStyle(color: Colors.white)),
-      subtitle: Text(subtitle, style: const TextStyle(color: Color(0xFFAAAAAA))),
-      onTap: onTap,
-      contentPadding: EdgeInsets.zero,
-    );
-  }
-
-  void _showClearCurrentPageDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2C),
-        title: Text(
-          'Clear Page ${widget.currentPage}',
-          style: const TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          'Remove all drawings and annotations from page ${widget.currentPage}? This cannot be undone.',
-          style: const TextStyle(color: Color(0xFFE0E0E0)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFFAAAAAA))),
-          ),
-          TextButton(
-            onPressed: () {
-              _pushToUndoStack();
-              setState(() {
-                _pageDrawings.remove(widget.currentPage);
-                _pageTextAnnotations.remove(widget.currentPage);
-              });
-              _scheduleAutoSync();
-              Navigator.pop(context);
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Clear'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showClearAllPagesDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2C),
-        title: const Text('Clear All Pages', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Remove all drawings and annotations from all pages? This cannot be undone.',
-          style: TextStyle(color: Color(0xFFE0E0E0)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFFAAAAAA))),
-          ),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _pageDrawings.clear();
-                _pageTextAnnotations.clear();
-                _undoStacks.clear();
-                _redoStacks.clear();
-              });
-              _scheduleAutoSync();
-              Navigator.pop(context);
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Clear All'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _exportAnnotations() async {
-    try {
-      if (widget.onSave != null) {
-        final recorder = ui.PictureRecorder();
-        final canvas = Canvas(recorder);
-        final size = MediaQuery.of(context).size;
-
-        // Draw white background
-        canvas.drawRect(
-          Rect.fromLTWH(0, 0, size.width, size.height),
-          Paint()..color = Colors.white,
-        );
-
-        // Draw the current page strokes
-        final painter = DrawingPainter(
-          paths: _currentPagePaths,
-          textAnnotations: _currentPageTextAnnotations,
-          currentPath: null,
-        );
-        painter.paint(canvas, size);
-
-        final picture = recorder.endRecording();
-        final image = await picture.toImage(
-          size.width.toInt(),
-          size.height.toInt(),
-        );
-
-        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-        final bytes = byteData!.buffer.asUint8List();
-
-        widget.onSave!(bytes);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  void _showToolSettings() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF2C2C2C),
-        title: const Text('Tool Settings', style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SwitchListTile(
-              title: const Text('Auto Sync', style: TextStyle(color: Colors.white)),
-              subtitle: const Text('Automatically sync changes to Firebase',
-                  style: TextStyle(color: Color(0xFFAAAAAA))),
-              value: true,
-              onChanged: (value) {},
-              activeColor: const Color(0xFF4A9EFF),
-              contentPadding: EdgeInsets.zero,
-            ),
-            SwitchListTile(
-              title: const Text('Local Backup', style: TextStyle(color: Colors.white)),
-              subtitle: const Text('Keep local copies as backup',
-                  style: TextStyle(color: Color(0xFFAAAAAA))),
-              value: true,
-              onChanged: (value) {},
-              activeColor: const Color(0xFF4A9EFF),
-              contentPadding: EdgeInsets.zero,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done', style: TextStyle(color: Color(0xFF4A9EFF))),
-          ),
-        ],
-      ),
-    );
   }
 }
 
+// Custom painter for drawing all content
 class DrawingPainter extends CustomPainter {
   final List<DrawingPath> paths;
   final List<TextAnnotation> textAnnotations;
+  final List<ImageAnnotation> imageAnnotations;
+  final Map<String, ui.Image> loadedImages;
   final DrawingPath? currentPath;
 
   DrawingPainter({
     required this.paths,
     required this.textAnnotations,
+    required this.imageAnnotations,
+    required this.loadedImages,
     this.currentPath,
   });
 
@@ -1662,9 +1351,14 @@ class DrawingPainter extends CustomPainter {
       _drawPath(canvas, currentPath!);
     }
 
-    // Draw text annotations
+    // Draw images
+    for (final imageAnnotation in imageAnnotations) {
+      ImagePainter.drawImage(canvas, imageAnnotation, loadedImages);
+    }
+
+    // Draw text
     for (final textAnnotation in textAnnotations) {
-      _drawText(canvas, textAnnotation);
+      TextRenderer.drawText(canvas, textAnnotation);
     }
   }
 
@@ -1680,84 +1374,12 @@ class DrawingPainter extends CustomPainter {
       return;
     }
 
-    // Handle different shape types
-    switch (drawingPath.shapeType) {
-      case ShapeType.rectangle:
-        _drawRectangle(canvas, drawingPath);
-        break;
-      case ShapeType.circle:
-        _drawCircle(canvas, drawingPath);
-        break;
-      case ShapeType.line:
-        _drawLine(canvas, drawingPath);
-        break;
-      case ShapeType.arrow:
-        _drawArrow(canvas, drawingPath);
-        break;
-      default:
-        _drawFreeForm(canvas, drawingPath);
+    if (drawingPath.shapeType != null) {
+      final points = drawingPath.points.map((p) => p.offset).toList();
+      ShapePainter.drawShape(canvas, points, drawingPath.paint, drawingPath.shapeType!);
+    } else {
+      _drawFreeForm(canvas, drawingPath);
     }
-  }
-
-  void _drawRectangle(Canvas canvas, DrawingPath drawingPath) {
-    if (drawingPath.points.length < 2) return;
-
-    final start = drawingPath.points.first.offset;
-    final end = drawingPath.points.last.offset;
-
-    final rect = Rect.fromPoints(start, end);
-    canvas.drawRect(rect, drawingPath.paint);
-  }
-
-  void _drawCircle(Canvas canvas, DrawingPath drawingPath) {
-    if (drawingPath.points.length < 2) return;
-
-    final start = drawingPath.points.first.offset;
-    final end = drawingPath.points.last.offset;
-
-    final center = Offset(
-      (start.dx + end.dx) / 2,
-      (start.dy + end.dy) / 2,
-    );
-    final radius = (end - start).distance / 2;
-
-    canvas.drawCircle(center, radius, drawingPath.paint);
-  }
-
-  void _drawLine(Canvas canvas, DrawingPath drawingPath) {
-    if (drawingPath.points.length < 2) return;
-
-    final start = drawingPath.points.first.offset;
-    final end = drawingPath.points.last.offset;
-
-    canvas.drawLine(start, end, drawingPath.paint);
-  }
-
-  void _drawArrow(Canvas canvas, DrawingPath drawingPath) {
-    if (drawingPath.points.length < 2) return;
-
-    final start = drawingPath.points.first.offset;
-    final end = drawingPath.points.last.offset;
-
-    // Draw line
-    canvas.drawLine(start, end, drawingPath.paint);
-
-    // Draw arrowhead
-    const arrowLength = 20.0;
-    const arrowAngle = math.pi / 6; // 30 degrees
-
-    final direction = (end - start).direction;
-    final arrowPoint1 = end + Offset(
-      arrowLength * math.cos(direction + math.pi - arrowAngle),
-      arrowLength * math.sin(direction + math.pi - arrowAngle),
-    );
-    final arrowPoint2 = end + Offset(
-      arrowLength * math.cos(direction + math.pi + arrowAngle),
-      arrowLength * math.sin(direction + math.pi + arrowAngle),
-    );
-
-    canvas.drawLine(end, arrowPoint1, drawingPath.paint);
-    canvas.drawLine(end, arrowPoint2, drawingPath.paint);
   }
 
   void _drawFreeForm(Canvas canvas, DrawingPath drawingPath) {
@@ -1775,43 +1397,6 @@ class DrawingPainter extends CustomPainter {
     }
 
     canvas.drawPath(path, drawingPath.paint);
-  }
-
-  void _drawText(Canvas canvas, TextAnnotation textAnnotation) {
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: textAnnotation.text,
-        style: textAnnotation.style,
-      ),
-      textDirection: TextDirection.ltr,
-    );
-
-    textPainter.layout();
-    textPainter.paint(canvas, textAnnotation.position);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
-
-class StrokePreviewPainter extends CustomPainter {
-  final Color color;
-  final double strokeWidth;
-
-  StrokePreviewPainter({required this.color, required this.strokeWidth});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    final startPoint = Offset(20, size.height / 2);
-    final endPoint = Offset(size.width - 20, size.height / 2);
-
-    canvas.drawLine(startPoint, endPoint, paint);
   }
 
   @override
