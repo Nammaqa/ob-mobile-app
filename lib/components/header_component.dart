@@ -2,8 +2,9 @@
 import 'package:flutter/material.dart';
 import '../service/note_service.dart';
 import '../models/note_model.dart';
+import 'settings_dropdown.dart'; // Add this import
 
-class HeaderComponent extends StatelessWidget {
+class HeaderComponent extends StatefulWidget {
   final String title;
   final NoteService? noteService; // Optional for pages that don't need note count
 
@@ -12,6 +13,77 @@ class HeaderComponent extends StatelessWidget {
     required this.title,
     this.noteService,
   }) : super(key: key);
+
+  @override
+  State<HeaderComponent> createState() => _HeaderComponentState();
+}
+
+class _HeaderComponentState extends State<HeaderComponent> {
+  bool _isDropdownOpen = false;
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+
+  @override
+  void dispose() {
+    _closeDropdown();
+    super.dispose();
+  }
+
+  void _toggleDropdown() {
+    if (_isDropdownOpen) {
+      _closeDropdown();
+    } else {
+      _showDropdown();
+    }
+  }
+
+  void _showDropdown() {
+    _overlayEntry = _createOverlayEntry();
+    Overlay.of(context).insert(_overlayEntry!);
+    setState(() {
+      _isDropdownOpen = true;
+    });
+  }
+
+  void _closeDropdown() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+    if (mounted) {
+      setState(() {
+        _isDropdownOpen = false;
+      });
+    }
+  }
+
+  OverlayEntry _createOverlayEntry() {
+    return OverlayEntry(
+      builder: (context) => Stack(
+        children: [
+          // Invisible barrier to close dropdown when clicked outside
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: _closeDropdown,
+              child: Container(
+                color: Colors.transparent,
+              ),
+            ),
+          ),
+          // Dropdown positioned relative to the settings button
+          Positioned(
+            width: 240,
+            child: CompositedTransformFollower(
+              link: _layerLink,
+              showWhenUnlinked: false,
+              offset: const Offset(-216, 50), // Moved down from 40 to 50
+              child: SettingsDropdown(
+                onClose: _closeDropdown,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +99,7 @@ class HeaderComponent extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            title,
+            widget.title,
             style: const TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
@@ -36,9 +108,9 @@ class HeaderComponent extends StatelessWidget {
           const SizedBox(width: 16),
 
           // Note count (only show if noteService is provided)
-          if (noteService != null)
+          if (widget.noteService != null)
             StreamBuilder<List<Note>>(
-              stream: noteService!.getUserNotes(),
+              stream: widget.noteService!.getUserNotes(),
               builder: (context, snapshot) {
                 final count = snapshot.data?.length ?? 0;
                 return Container(
@@ -126,16 +198,23 @@ class HeaderComponent extends StatelessWidget {
               ),
               const SizedBox(width: 12),
 
-              // Settings icon - bigger
-              InkWell(
-                onTap: () {},
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Icon(
-                    Icons.settings_outlined,
-                    size: 24,
-                    color: Colors.grey[600],
+              // Settings icon with dropdown - bigger
+              CompositedTransformTarget(
+                link: _layerLink,
+                child: InkWell(
+                  onTap: _toggleDropdown,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _isDropdownOpen ? Colors.grey[100] : Colors.transparent,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(
+                      Icons.settings_outlined,
+                      size: 24,
+                      color: Colors.grey[600],
+                    ),
                   ),
                 ),
               ),
