@@ -215,7 +215,7 @@ class _CreateNoteDialogState extends State<CreateNoteDialog> {
     return _templates.where((template) => template.visibility == 'premium').toList();
   }
 
-  Widget _buildTemplateCard(Template template) {
+  Widget _buildTemplateCard(Template template, {double width = 100}) {
     final isSelected = _selectedTemplate?.id == template.id;
 
     return GestureDetector(
@@ -225,7 +225,7 @@ class _CreateNoteDialogState extends State<CreateNoteDialog> {
         });
       },
       child: Container(
-        width: 100,
+        width: width,
         margin: const EdgeInsets.only(right: 12),
         decoration: BoxDecoration(
           border: Border.all(
@@ -346,391 +346,443 @@ class _CreateNoteDialogState extends State<CreateNoteDialog> {
       child: Container(
         width: 500,
         height: 600,
-        padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFFE7E7E7), // Grey background
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           children: [
-            // Fixed Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                TextButton(
-                  onPressed: _isCreating ? null : () => Navigator.of(context).pop(),
-                  child: const Text(
-                    'Close',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.grey,
+            // White Header Section
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: _isCreating ? null : () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'Close',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey,
+                      ),
                     ),
                   ),
-                ),
-                const Text(
-                  'Create Note',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
+                  const Text(
+                    'Create Note',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 60), // Balance the header
-              ],
+                  const SizedBox(width: 60), // Balance the header
+                ],
+              ),
             ),
 
-            // Scrollable Content
+            // Scrollable Content with Grey Background
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.only(top: 24, bottom: 16),
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Cover/Paper toggle section
+                    // Cover/Paper toggle section in white container
                     Container(
-                      height: 150,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'COVER',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Expanded(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.grey[300]!),
-                                    ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(7),
-                                      child: Image.asset(
-                                        'assets/images/Cover.png',
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) {
-                                          return Container(
-                                            color: Colors.brown[100],
-                                            child: const Center(
-                                              child: Text(
-                                                'COVER',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.brown,
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'PAPER',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Expanded(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.grey[300]!),
-                                    ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(7),
-                                      child: Image.asset(
-                                        'assets/images/paper.png',
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) {
-                                          return Container(
-                                            color: Colors.pink[50],
-                                            child: Center(
-                                              child: Text(
-                                                'PAPER',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.pink[300],
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Name and Description Fields (Optional)
-                    ExpansionTile(
-                      title: const Text(
-                        'Custom Details (Optional)',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      initiallyExpanded: false,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Form(
-                            key: _formKey,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Name Field
-                                const Text(
-                                  'Note Name',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                TextFormField(
-                                  controller: _nameController,
-                                  enabled: !_isCreating,
-                                  decoration: InputDecoration(
-                                    hintText: 'Enter custom note name (optional)',
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Colors.grey[300]!),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Colors.grey[300]!),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: const BorderSide(color: Colors.blue, width: 2),
-                                    ),
-                                    disabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Colors.grey[200]!),
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 12,
-                                    ),
-                                    filled: _isCreating,
-                                    fillColor: _isCreating ? Colors.grey[50] : null,
-                                  ),
-                                ),
-
-                                const SizedBox(height: 16),
-
-                                // Description Field
-                                const Text(
-                                  'Description',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                TextFormField(
-                                  controller: _descriptionController,
-                                  enabled: !_isCreating,
-                                  maxLines: 3,
-                                  maxLength: 200,
-                                  decoration: InputDecoration(
-                                    hintText: 'Enter custom description (optional)',
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Colors.grey[300]!),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Colors.grey[300]!),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: const BorderSide(color: Colors.blue, width: 2),
-                                    ),
-                                    disabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(color: Colors.grey[200]!),
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 12,
-                                    ),
-                                    filled: _isCreating,
-                                    fillColor: _isCreating ? Colors.grey[50] : null,
-                                    counterStyle: TextStyle(
-                                      color: Colors.grey[500],
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Cover toggle
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Cover',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                        Switch(
-                          value: _showCover,
-                          onChanged: (value) {
-                            setState(() {
-                              _showCover = value;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-
-                    // Size option
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Size'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        // Handle size selection
-                      },
-                    ),
-
-                    // Color option
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Color'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: Column(
                         children: [
                           Container(
-                            width: 16,
-                            height: 16,
-                            decoration: const BoxDecoration(
-                              color: Colors.black,
-                              shape: BoxShape.circle,
+                            height: 150,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    children: [
+                                      const Text(
+                                        'COVER',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Expanded(
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: Colors.grey[300]!),
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(7),
+                                            child: Image.asset(
+                                              'assets/images/Cover.png',
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) {
+                                                return Container(
+                                                  color: Colors.brown[100],
+                                                  child: const Center(
+                                                    child: Text(
+                                                      'COVER',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.brown,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    children: [
+                                      const Text(
+                                        'PAPER',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Expanded(
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: Colors.grey[300]!),
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(7),
+                                            child: Image.asset(
+                                              'assets/images/paper.png',
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) {
+                                                return Container(
+                                                  color: Colors.pink[50],
+                                                  child: Center(
+                                                    child: Text(
+                                                      'PAPER',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.pink[300],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _selectedColor,
-                            style: const TextStyle(color: Colors.grey),
+                          const SizedBox(height: 16),
+                          // Cover toggle
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Cover',
+                                style: TextStyle(fontSize: 16),
+                              ),
+                              Switch(
+                                value: _showCover,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _showCover = value;
+                                  });
+                                },
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.chevron_right),
                         ],
-                      ),
-                      onTap: () {
-                        // Handle color selection
-                      },
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Paper Templates
-                    const Text(
-                      'Paper Templates',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
                       ),
                     ),
 
                     const SizedBox(height: 16),
 
-                    // Templates content
-                    _isLoading
-                        ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(40),
-                        child: CircularProgressIndicator(),
+                    // Custom Details Container
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    )
-                        : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Essentials section
-                        if (_essentialTemplates.isNotEmpty) ...[
-                          const Text(
-                            'Essentials',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
+                      child: ExpansionTile(
+                        title: const Text(
+                          'Custom Details (Optional)',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
                           ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            height: 200,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              physics: const BouncingScrollPhysics(),
-                              itemCount: _essentialTemplates.length,
-                              itemBuilder: (context, index) {
-                                return _buildTemplateCard(_essentialTemplates[index]);
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
+                        ),
+                        initiallyExpanded: false,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Form(
+                              key: _formKey,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Name Field
+                                  const Text(
+                                    'Note Name',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextFormField(
+                                    controller: _nameController,
+                                    enabled: !_isCreating,
+                                    decoration: InputDecoration(
+                                      hintText: 'Enter custom note name (optional)',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(color: Colors.grey[300]!),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(color: Colors.grey[300]!),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: const BorderSide(color: Colors.blue, width: 2),
+                                      ),
+                                      disabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(color: Colors.grey[200]!),
+                                      ),
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 12,
+                                      ),
+                                      filled: _isCreating,
+                                      fillColor: _isCreating ? Colors.grey[50] : null,
+                                    ),
+                                  ),
 
-                        // Planners section
-                        if (_plannerTemplates.isNotEmpty) ...[
-                          const Text(
-                            'Planners',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                                  const SizedBox(height: 16),
+
+                                  // Description Field
+                                  const Text(
+                                    'Description',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TextFormField(
+                                    controller: _descriptionController,
+                                    enabled: !_isCreating,
+                                    maxLines: 3,
+                                    maxLength: 200,
+                                    decoration: InputDecoration(
+                                      hintText: 'Enter custom description (optional)',
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(color: Colors.grey[300]!),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(color: Colors.grey[300]!),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: const BorderSide(color: Colors.blue, width: 2),
+                                      ),
+                                      disabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                        borderSide: BorderSide(color: Colors.grey[200]!),
+                                      ),
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 12,
+                                      ),
+                                      filled: _isCreating,
+                                      fillColor: _isCreating ? Colors.grey[50] : null,
+                                      counterStyle: TextStyle(
+                                        color: Colors.grey[500],
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            height: 200,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              physics: const BouncingScrollPhysics(),
-                              itemCount: _plannerTemplates.length,
-                              itemBuilder: (context, index) {
-                                return _buildTemplateCard(_plannerTemplates[index]);
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: 40), // Extra bottom padding
                         ],
-                      ],
+                      ),
                     ),
+
+                    const SizedBox(height: 16),
+
+                    // Size and Color Container
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          // Size option
+                          ListTile(
+                            title: const Text('Size'),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () {
+                              // Handle size selection
+                            },
+                          ),
+                          Divider(height: 1, color: Colors.grey[200]),
+                          // Color option
+                          ListTile(
+                            title: const Text('Color'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 16,
+                                  height: 16,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _selectedColor,
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(Icons.chevron_right),
+                              ],
+                            ),
+                            onTap: () {
+                              // Handle color selection
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Paper Templates Container
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Paper Templates',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          // Templates content
+                          _isLoading
+                              ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(40),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                              : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Essentials section
+                              if (_essentialTemplates.isNotEmpty) ...[
+                                const Text(
+                                  'Essentials',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 200,
+                                  child: ListView.builder(
+                                    scrollDirection: Axis.horizontal,
+                                    physics: const BouncingScrollPhysics(),
+                                    itemCount: _essentialTemplates.length,
+                                    itemBuilder: (context, index) {
+                                      return _buildTemplateCard(_essentialTemplates[index]);
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                              ],
+
+                              // Planners section
+                              if (_plannerTemplates.isNotEmpty) ...[
+                                const Text(
+                                  'Planners',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  height: 200,
+                                  child: ListView.builder(
+                                    scrollDirection: Axis.horizontal,
+                                    physics: const BouncingScrollPhysics(),
+                                    itemCount: _plannerTemplates.length,
+                                    itemBuilder: (context, index) {
+                                      return _buildTemplateCard(_plannerTemplates[index], width: 140);
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 20), // Bottom spacing
                   ],
                 ),
               ),
@@ -738,10 +790,13 @@ class _CreateNoteDialogState extends State<CreateNoteDialog> {
 
             // Fixed Action Buttons at bottom
             Container(
-              padding: const EdgeInsets.only(top: 16),
-              decoration: BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: Colors.grey[200]!),
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(16),
+                  bottomRight: Radius.circular(16),
                 ),
               ),
               child: Row(
