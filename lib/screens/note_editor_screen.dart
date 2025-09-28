@@ -1,4 +1,3 @@
-// screens/note_editor_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
@@ -7,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../components/drawing_editor.dart';
+import 'package:organize/components/mode_selector_tool.dart';
 import '../service/note_service.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -39,6 +39,10 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
   String? _cachedPdfPath;
   bool _isSaving = false;
   DateTime? _lastSaveTime;
+  bool _isEditorActive = true;
+
+  // Toolbar option state - Set default to editor
+  ToolbarOption? _selectedToolbarOption = ToolbarOption.editor;
 
   static const String _templatePath = 'assets/templates/apple_planner.pdf';
   static const String _cacheKey = 'apple_planner_cache_path';
@@ -72,6 +76,87 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       _saveNoteState();
     }
+  }
+
+  void _handleToolbarOptionSelected(ToolbarOption option) {
+    setState(() {
+      _selectedToolbarOption = option;
+      switch (option) {
+        case ToolbarOption.editor:
+          _isEditorActive = true;
+          break;
+        case ToolbarOption.keyboard:
+          _isEditorActive = false;
+          _handleKeyboardOption();
+          break;
+        case ToolbarOption.voice:
+          _isEditorActive = false;
+          _handleVoiceOption();
+          break;
+      }
+    });
+  }
+
+  void _handleKeyboardOption() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Keyboard Input'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              decoration: const InputDecoration(
+                labelText: 'Add text note',
+                hintText: 'Type your note here...',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 4,
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Text note saved'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleVoiceOption() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.mic, color: Colors.white),
+            SizedBox(width: 8),
+            Text('Voice recording feature coming soon...'),
+          ],
+        ),
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 2),
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
+      ),
+    );
   }
 
   Future<void> _initializePdfCache() async {
@@ -273,7 +358,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
           shadowColor: Colors.black.withOpacity(0.1),
           actions: [
             if (!_isLoading && _errorMessage == null) ...[
-              // Page navigation buttons
               IconButton(
                 icon: const Icon(Icons.keyboard_arrow_up),
                 onPressed: _currentPageNumber > 1 ? _previousPage : null,
@@ -284,13 +368,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                 onPressed: _currentPageNumber < _totalPages ? _nextPage : null,
                 tooltip: 'Next Page',
               ),
-              // Go to page
               IconButton(
                 icon: const Icon(Icons.pageview),
                 onPressed: _showGoToPageDialog,
                 tooltip: 'Go to Page',
               ),
-              // Zoom controls
               PopupMenuButton<String>(
                 icon: const Icon(Icons.zoom_in),
                 tooltip: 'Zoom Options',
@@ -338,7 +420,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                   ),
                 ],
               ),
-              // More options
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
                 tooltip: 'More Options',
@@ -389,58 +470,17 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
             ],
           ],
         ),
-        body: Container(
-          color: Colors.white,
-          child: _buildBody(),
+        body: Column(
+          children: [
+            NoteEditorToolbar(
+              selectedOption: _selectedToolbarOption,
+              onOptionSelected: _handleToolbarOptionSelected,
+            ),
+            Expanded(
+              child: _buildBody(),
+            ),
+          ],
         ),
-        bottomNavigationBar: (!_isLoading && _errorMessage == null && _totalPages > 1)
-            ? Container(
-          height: 60,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.2),
-                blurRadius: 8,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Page $_currentPageNumber of $_totalPages',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: 24),
-              IconButton(
-                icon: const Icon(Icons.first_page),
-                onPressed: _currentPageNumber > 1
-                    ? () => _pdfViewerController.jumpToPage(1)
-                    : null,
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: _currentPageNumber > 1 ? _previousPage : null,
-              ),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: _currentPageNumber < _totalPages ? _nextPage : null,
-              ),
-              IconButton(
-                icon: const Icon(Icons.last_page),
-                onPressed: _currentPageNumber < _totalPages
-                    ? () => _pdfViewerController.jumpToPage(_totalPages)
-                    : null,
-              ),
-            ],
-          ),
-        )
-            : null,
       ),
     );
   }
@@ -489,11 +529,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Colors.red[300],
-            ),
+            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
             const SizedBox(height: 16),
             Text(
               'Failed to load Apple Planner',
@@ -540,63 +576,70 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
       );
     }
 
-    // PDF with drawing overlay
-    return Container(
-      color: Colors.white,
-      child: DrawingOverlay(
-        noteId: widget.noteId,
-        currentPage: _currentPageNumber,
-        onSave: _handleDrawingSave,
-        onDrawingChanged: _onDrawingChanged,
-        child: _buildPdfView(),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Container(
+          width: constraints.maxWidth,
+          height: constraints.maxHeight,
+          child: Stack(
+            children: [
+              // PDF Viewer as base layer
+              _buildPdfView(),
+              // Drawing overlay on top when editor is active
+              if (_isEditorActive)
+                Positioned.fill(
+                  child: DrawingOverlay(
+                    noteId: widget.noteId,
+                    currentPage: _currentPageNumber,
+                    onSave: _handleDrawingSave,
+                    onDrawingChanged: _onDrawingChanged,
+                    child: Container(),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 
   Widget _buildPdfView() {
     return Container(
       color: Colors.white,
+      padding: const EdgeInsets.only(top: 60), // Add padding to account for drawing toolbar
       child: SfPdfViewer.file(
         File(_cachedPdfPath!),
         key: _pdfViewerKey,
         controller: _pdfViewerController,
         canShowPaginationDialog: _canShowPaginationDialog,
-        canShowPasswordDialog: false,
-        canShowScrollHead: true,
-        canShowScrollStatus: true,
-        enableDoubleTapZooming: true,
-        enableTextSelection: true,
-        interactionMode: PdfInteractionMode.selection,
+        interactionMode: _isEditorActive
+            ? PdfInteractionMode.pan
+            : PdfInteractionMode.selection,
         scrollDirection: PdfScrollDirection.vertical,
         pageLayoutMode: PdfPageLayoutMode.single,
         initialZoomLevel: 1.0,
-        onDocumentLoaded: (PdfDocumentLoadedDetails details) {
+        onDocumentLoaded: (details) {
           setState(() {
             _totalPages = details.document.pages.count;
           });
           _loadNoteState();
         },
-        onPageChanged: (PdfPageChangedDetails details) {
-          if (mounted) {
-            setState(() {
-              _currentPageNumber = details.newPageNumber;
-            });
-            _scheduleAutoSave();
-          }
+        onPageChanged: (details) {
+          setState(() {
+            _currentPageNumber = details.newPageNumber;
+          });
+          _scheduleAutoSave();
         },
-        onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
-          if (mounted) {
-            setState(() {
-              _errorMessage = 'Failed to load Apple Planner: ${details.error}';
-            });
-          }
+        onDocumentLoadFailed: (details) {
+          setState(() {
+            _errorMessage = 'Failed to load Apple Planner: ${details.error}';
+          });
         },
       ),
     );
   }
 
   void _onDrawingChanged(Map<String, dynamic> drawingData) {
-    // Save drawing data to Firestore
     _noteService.saveDrawingData(widget.noteId, drawingData).catchError((error) {
       print('Error saving drawing data: $error');
     });
