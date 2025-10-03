@@ -14,6 +14,7 @@ class NoteService {
   Future<String> createNote({
     required String name,
     required String description,
+    String? templateUrl, // ADD THIS PARAMETER
   }) async {
     if (currentUserId == null) {
       throw Exception('User not logged in');
@@ -30,6 +31,7 @@ class NoteService {
         'lastOpenedPage': 1,
         'zoomLevel': 1.0,
         'isFavorite': false,
+        'templateUrl': templateUrl, // ADD THIS
       });
 
       return noteRef.id;
@@ -94,6 +96,7 @@ class NoteService {
     Map<String, dynamic>? drawingData,
     int? lastOpenedPage,
     double? zoomLevel,
+    String? templateUrl, // ADD THIS PARAMETER
   }) async {
     if (currentUserId == null) {
       throw Exception('User not logged in');
@@ -109,6 +112,7 @@ class NoteService {
       if (drawingData != null) updates['drawingData'] = drawingData;
       if (lastOpenedPage != null) updates['lastOpenedPage'] = lastOpenedPage;
       if (zoomLevel != null) updates['zoomLevel'] = zoomLevel;
+      if (templateUrl != null) updates['templateUrl'] = templateUrl; // ADD THIS
 
       await _firestore.collection('notes').doc(noteId).update(updates);
     } catch (e) {

@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 import '../components/drawing_editor.dart';
 import 'package:organize/components/mode_selector_tool.dart';
 import '../service/note_service.dart';
@@ -41,15 +42,12 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
   DateTime? _lastSaveTime;
   bool _isEditorActive = true;
 
-  // Toolbar option state - Set default to editor
   ToolbarOption? _selectedToolbarOption = ToolbarOption.editor;
 
-  static const String _templatePath = 'assets/templates/apple_planner.pdf';
-  static const String _cacheKey = 'apple_planner_cache_path';
-  static const String _cacheVersionKey = 'apple_planner_cache_version';
-  static const String _currentVersion = '1.0.0';
+  String? _templateUrl;
+  String _cacheKey = '';
+  String _cacheVersionKey = '';
 
-  // Auto-save timer
   static const Duration _autoSaveDelay = Duration(seconds: 5);
   Timer? _autoSaveTimer;
 
@@ -58,8 +56,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _pdfViewerController = PdfViewerController();
-    _initializePdfCache();
-    _loadNoteState();
+    _initializePdfFromTemplate();
   }
 
   @override
@@ -159,55 +156,135 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
     );
   }
 
-  Future<void> _initializePdfCache() async {
+  Future<void> _initializePdfFromTemplate() async {
     try {
+      print('🚀 Initializing PDF for note: ${widget.noteId}');
+
+      // Fetch note details to get template URL
+      final note = await _noteService.getNote(widget.noteId);
+
+      if (note == null) {
+        print('❌ Note not found');
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Note not found';
+        });
+        return;
+      }
+
+      print('📝 Note loaded: ${note.name}');
+      print('🔗 Template URL: ${note.templateUrl}');
+
+      // Get template URL from note
+      _templateUrl = note.templateUrl;
+
+      if (_templateUrl == null || _templateUrl!.isEmpty) {
+        print('❌ No template URL found');
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'No template URL found for this note. This note may have been created before the template system was implemented.';
+        });
+        return;
+      }
+
+      _cacheKey = 'pdf_cache_${widget.noteId}';
+      _cacheVersionKey = 'pdf_cache_version_${widget.noteId}';
+
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? cachedPath = prefs.getString(_cacheKey);
-      final String? cachedVersion = prefs.getString(_cacheVersionKey);
+      final String? cachedUrl = prefs.getString('${_cacheKey}_url');
 
+      print('💾 Cached path: $cachedPath');
+      print('🔗 Cached URL: $cachedUrl');
+
+      // Check if cached PDF exists and matches current template URL
       if (cachedPath != null &&
-          cachedVersion == _currentVersion &&
+          cachedUrl == _templateUrl &&
           await File(cachedPath).exists()) {
+        print('✅ Using cached PDF');
         _cachedPdfPath = cachedPath;
         setState(() {
           _isLoading = false;
         });
+        _loadNoteState();
       } else {
-        await _cachePdfToLocalStorage(prefs);
+        print('⬇️ Downloading fresh PDF');
+        await _downloadAndCachePdf(prefs);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ Error in _initializePdfFromTemplate: $e');
+      print('📚 Stack trace: $stackTrace');
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Failed to initialize PDF cache: $e';
+        _errorMessage = 'Failed to initialize PDF: $e';
       });
     }
   }
 
-  Future<void> _cachePdfToLocalStorage(SharedPreferences prefs) async {
+  Future<void> _downloadAndCachePdf(SharedPreferences prefs) async {
     try {
-      final ByteData data = await DefaultAssetBundle.of(context).load(_templatePath);
-      final Uint8List bytes = data.buffer.asUint8List();
+      print('📥 Attempting to download PDF from: $_templateUrl');
+
+      // Download PDF from URL
+      final response = await http.get(Uri.parse(_templateUrl!));
+
+      print('📡 HTTP Response Status: ${response.statusCode}');
+      print('📄 Content-Type: ${response.headers['content-type']}');
+      print('📦 Content Length: ${response.bodyBytes.length} bytes');
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to download PDF: HTTP ${response.statusCode}');
+      }
+
+      final Uint8List bytes = response.bodyBytes;
+
+      // Check if the response is actually a PDF
+      if (bytes.length < 5 ||
+          bytes[0] != 0x25 || // %
+          bytes[1] != 0x50 || // P
+          bytes[2] != 0x44 || // D
+          bytes[3] != 0x46) { // F
+        // Not a valid PDF file
+        print('❌ Downloaded file is not a valid PDF. First bytes: ${bytes.take(20).toList()}');
+
+        // Try to decode as text to see what we got
+        try {
+          final text = String.fromCharCodes(bytes.take(200));
+          print('📝 Content preview: $text');
+        } catch (e) {
+          print('⚠️ Could not decode content as text');
+        }
+
+        throw Exception('Downloaded file is not a valid PDF format. Check the template URL.');
+      }
+
+      print('✅ PDF validation passed');
 
       final Directory appDir = await getApplicationDocumentsDirectory();
       final String cacheDir = '${appDir.path}/pdf_cache';
 
       await Directory(cacheDir).create(recursive: true);
 
-      final String cachedPath = '$cacheDir/apple_planner_cached.pdf';
+      final String cachedPath = '$cacheDir/note_${widget.noteId}.pdf';
       final File cachedFile = File(cachedPath);
       await cachedFile.writeAsBytes(bytes);
 
+      print('💾 PDF cached at: $cachedPath');
+
       await prefs.setString(_cacheKey, cachedPath);
-      await prefs.setString(_cacheVersionKey, _currentVersion);
+      await prefs.setString('${_cacheKey}_url', _templateUrl!);
 
       _cachedPdfPath = cachedPath;
       setState(() {
         _isLoading = false;
       });
-    } catch (e) {
+      _loadNoteState();
+    } catch (e, stackTrace) {
+      print('❌ Error downloading PDF: $e');
+      print('📚 Stack trace: $stackTrace');
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Failed to cache PDF: $e';
+        _errorMessage = 'Failed to download PDF: $e\n\nURL: $_templateUrl';
       });
     }
   }
@@ -257,15 +334,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
       }
     } catch (e) {
       print('Error saving note state: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
     } finally {
       setState(() {
         _isSaving = false;
@@ -280,7 +348,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
     });
   }
 
-  static Future<void> clearPdfCache() async {
+  Future<void> clearPdfCache() async {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? cachedPath = prefs.getString(_cacheKey);
@@ -293,7 +361,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
       }
 
       await prefs.remove(_cacheKey);
-      await prefs.remove(_cacheVersionKey);
+      await prefs.remove('${_cacheKey}_url');
     } catch (e) {
       print('Error clearing cache: $e');
     }
@@ -356,119 +424,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
           foregroundColor: Colors.black,
           elevation: 1,
           shadowColor: Colors.black.withOpacity(0.1),
-          actions: [
-            if (!_isLoading && _errorMessage == null) ...[
-              IconButton(
-                icon: const Icon(Icons.keyboard_arrow_up),
-                onPressed: _currentPageNumber > 1 ? _previousPage : null,
-                tooltip: 'Previous Page',
-              ),
-              IconButton(
-                icon: const Icon(Icons.keyboard_arrow_down),
-                onPressed: _currentPageNumber < _totalPages ? _nextPage : null,
-                tooltip: 'Next Page',
-              ),
-              IconButton(
-                icon: const Icon(Icons.pageview),
-                onPressed: _showGoToPageDialog,
-                tooltip: 'Go to Page',
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.zoom_in),
-                tooltip: 'Zoom Options',
-                onSelected: (value) => _handleZoomAction(value),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'fit_width',
-                    child: Row(
-                      children: [
-                        Icon(Icons.swap_horiz, size: 18),
-                        SizedBox(width: 8),
-                        Text('Fit Width'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'fit_page',
-                    child: Row(
-                      children: [
-                        Icon(Icons.fit_screen, size: 18),
-                        SizedBox(width: 8),
-                        Text('Fit Page'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'zoom_in',
-                    child: Row(
-                      children: [
-                        Icon(Icons.zoom_in, size: 18),
-                        SizedBox(width: 8),
-                        Text('Zoom In'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'zoom_out',
-                    child: Row(
-                      children: [
-                        Icon(Icons.zoom_out, size: 18),
-                        SizedBox(width: 8),
-                        Text('Zoom Out'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert),
-                tooltip: 'More Options',
-                onSelected: (value) => _handleMoreActions(value),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'save',
-                    child: Row(
-                      children: [
-                        Icon(Icons.save, size: 18),
-                        SizedBox(width: 8),
-                        Text('Save Now'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'info',
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, size: 18),
-                        SizedBox(width: 8),
-                        Text('Note Info'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'export',
-                    child: Row(
-                      children: [
-                        Icon(Icons.share, size: 18),
-                        SizedBox(width: 8),
-                        Text('Export Note'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'clear_cache',
-                    child: Row(
-                      children: [
-                        Icon(Icons.clear_all, size: 18),
-                        SizedBox(width: 8),
-                        Text('Clear Cache'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
+          actions: _buildAppBarActions(),
         ),
         body: Column(
           children: [
@@ -485,95 +441,57 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
     );
   }
 
+  List<Widget> _buildAppBarActions() {
+    if (_isLoading || _errorMessage != null) return [];
+
+    return [
+      IconButton(
+        icon: const Icon(Icons.keyboard_arrow_up),
+        onPressed: _currentPageNumber > 1 ? _previousPage : null,
+        tooltip: 'Previous Page',
+      ),
+      IconButton(
+        icon: const Icon(Icons.keyboard_arrow_down),
+        onPressed: _currentPageNumber < _totalPages ? _nextPage : null,
+        tooltip: 'Next Page',
+      ),
+      IconButton(
+        icon: const Icon(Icons.pageview),
+        onPressed: _showGoToPageDialog,
+        tooltip: 'Go to Page',
+      ),
+      PopupMenuButton<String>(
+        icon: const Icon(Icons.zoom_in),
+        tooltip: 'Zoom Options',
+        onSelected: (value) => _handleZoomAction(value),
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: 'fit_width', child: Text('Fit Width')),
+          const PopupMenuItem(value: 'fit_page', child: Text('Fit Page')),
+          const PopupMenuItem(value: 'zoom_in', child: Text('Zoom In')),
+          const PopupMenuItem(value: 'zoom_out', child: Text('Zoom Out')),
+        ],
+      ),
+      PopupMenuButton<String>(
+        icon: const Icon(Icons.more_vert),
+        tooltip: 'More Options',
+        onSelected: (value) => _handleMoreActions(value),
+        itemBuilder: (context) => [
+          const PopupMenuItem(value: 'save', child: Text('Save Now')),
+          const PopupMenuItem(value: 'info', child: Text('Note Info')),
+          const PopupMenuItem(value: 'export', child: Text('Export Note')),
+          const PopupMenuItem(value: 'clear_cache', child: Text('Clear Cache')),
+        ],
+      ),
+    ];
+  }
+
   Widget _buildBody() {
     if (_isLoading) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 50,
-              height: 50,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                backgroundColor: Colors.grey[300],
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[600]!),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              _cachedPdfPath == null
-                  ? 'Preparing Apple Planner...'
-                  : 'Loading from cache...',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[700],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              widget.noteName,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
-            ),
-          ],
-        ),
-      );
+      return _buildLoadingScreen();
     }
 
     if (_errorMessage != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
-            const SizedBox(height: 16),
-            Text(
-              'Failed to load Apple Planner',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[800],
-              ),
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                _errorMessage!,
-                style: TextStyle(color: Colors.grey[600]),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    setState(() {
-                      _isLoading = true;
-                      _errorMessage = null;
-                    });
-                    await clearPdfCache();
-                    await _initializePdfCache();
-                  },
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Retry'),
-                ),
-                const SizedBox(width: 12),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Go Back'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
+      return _buildErrorScreen();
     }
 
     return LayoutBuilder(
@@ -583,9 +501,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
           height: constraints.maxHeight,
           child: Stack(
             children: [
-              // PDF Viewer as base layer
               _buildPdfView(),
-              // Drawing overlay on top when editor is active
               if (_isEditorActive)
                 Positioned.fill(
                   child: DrawingOverlay(
@@ -603,10 +519,129 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
     );
   }
 
+  Widget _buildLoadingScreen() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Animated loading icon
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.0, end: 1.0),
+            duration: const Duration(milliseconds: 1500),
+            builder: (context, value, child) {
+              return Transform.scale(
+                scale: 0.8 + (value * 0.2),
+                child: Opacity(
+                  opacity: 0.6 + (value * 0.4),
+                  child: Image.asset(
+                    'assets/images/organize_splash.png',
+                    width: 120,
+                    height: 120,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Icon(
+                        Icons.description,
+                        size: 120,
+                        color: Colors.blue,
+                      );
+                    },
+                  ),
+                ),
+              );
+            },
+            onEnd: () {
+              if (mounted && _isLoading) {
+                setState(() {}); // Restart animation
+              }
+            },
+          ),
+          const SizedBox(height: 32),
+          const SizedBox(
+            width: 40,
+            height: 40,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Loading your note...',
+            style: TextStyle(
+              fontSize: 18,
+              color: Colors.grey[800],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.noteName,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorScreen() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+          const SizedBox(height: 16),
+          Text(
+            'Failed to load note',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[800],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              _errorMessage!,
+              style: TextStyle(color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () async {
+                  setState(() {
+                    _isLoading = true;
+                    _errorMessage = null;
+                  });
+                  await clearPdfCache();
+                  await _initializePdfFromTemplate();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
+              const SizedBox(width: 12),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Go Back'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPdfView() {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.only(top: 60), // Add padding to account for drawing toolbar
+      padding: const EdgeInsets.only(top: 60),
       child: SfPdfViewer.file(
         File(_cachedPdfPath!),
         key: _pdfViewerKey,
@@ -632,7 +667,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
         },
         onDocumentLoadFailed: (details) {
           setState(() {
-            _errorMessage = 'Failed to load Apple Planner: ${details.error}';
+            _errorMessage = 'Failed to load PDF: ${details.error}';
           });
         },
       ),
@@ -667,11 +702,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
             content: Text('Drawing saved: $fileName'),
             duration: const Duration(seconds: 3),
             backgroundColor: Colors.green,
-            action: SnackBarAction(
-              label: 'OK',
-              textColor: Colors.white,
-              onPressed: () {},
-            ),
           ),
         );
       }
@@ -680,7 +710,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
         SnackBar(
           content: Text('Failed to save drawing: $e'),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
         ),
       );
     }
@@ -716,10 +745,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
               TextField(
                 controller: pageController,
                 keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(
                   labelText: 'Page number',
-                  hintText: '1',
                   border: const OutlineInputBorder(),
                   suffixText: '/ $_totalPages',
                 ),
@@ -738,13 +765,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
                 if (pageNumber != null && pageNumber >= 1 && pageNumber <= _totalPages) {
                   _pdfViewerController.jumpToPage(pageNumber);
                   Navigator.pop(context);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Please enter a valid page number between 1 and $_totalPages'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
                 }
               },
               child: const Text('Go'),
@@ -797,8 +817,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Clear Cache'),
-        content: const Text(
-            'This will clear the cached PDF and free up storage space. The PDF will be re-cached on next load.'),
+        content: const Text('This will clear the cached PDF and free up storage space.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -816,14 +835,14 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Clear', style: TextStyle(color: Colors.white)),
+            child: const Text('Clear'),
           ),
         ],
       ),
     );
   }
 
-  void _showNoteInfo() async {
+  void _showNoteInfo() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -833,17 +852,13 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildInfoRow('Note Name', widget.noteName),
-            _buildInfoRow('Description',
-                widget.noteDescription.isEmpty ? 'No description' : widget.noteDescription),
+            _buildInfoRow('Description', widget.noteDescription.isEmpty ? 'No description' : widget.noteDescription),
             _buildInfoRow('Note ID', widget.noteId),
-            _buildInfoRow('Template', 'Apple Planner'),
             _buildInfoRow('Total Pages', '$_totalPages'),
             _buildInfoRow('Current Page', '$_currentPageNumber'),
             _buildInfoRow('Zoom Level', '${(_pdfViewerController.zoomLevel * 100).toInt()}%'),
-            _buildInfoRow('Last Saved',
-                _lastSaveTime != null ? _lastSaveTime.toString().split('.')[0] : 'Not saved yet'),
+            _buildInfoRow('Last Saved', _lastSaveTime != null ? _lastSaveTime.toString().split('.')[0] : 'Not saved yet'),
             _buildInfoRow('Cache Status', _cachedPdfPath != null ? 'Cached' : 'Not Cached'),
-            _buildInfoRow('Auto-save', 'Enabled'),
           ],
         ),
         actions: [
@@ -885,7 +900,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Export Note'),
-        content: const Text('Export your Apple Planner note as PDF?'),
+        content: const Text('Export your note as PDF?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),

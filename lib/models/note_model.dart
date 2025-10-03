@@ -12,6 +12,7 @@ class Note {
   final int lastOpenedPage;
   final double zoomLevel;
   final Map<String, dynamic>? drawingData;
+  final String? templateUrl; // ADD THIS FIELD
 
   Note({
     required this.id,
@@ -24,6 +25,7 @@ class Note {
     this.lastOpenedPage = 1,
     this.zoomLevel = 1.0,
     this.drawingData,
+    this.templateUrl, // ADD THIS
   });
 
   factory Note.fromDocument(DocumentSnapshot doc) {
@@ -38,7 +40,6 @@ class Note {
       if (createdTimestamp is Timestamp) {
         createdAt = createdTimestamp.toDate();
       } else if (createdTimestamp != null) {
-        // Fallback for other timestamp formats
         createdAt = DateTime.now();
       }
 
@@ -46,11 +47,9 @@ class Note {
       if (updatedTimestamp is Timestamp) {
         updatedAt = updatedTimestamp.toDate();
       } else if (updatedTimestamp != null) {
-        // Fallback for other timestamp formats
         updatedAt = DateTime.now();
       }
     } catch (e) {
-      // If there's any error parsing timestamps, use current time
       print('Error parsing timestamps: $e');
       createdAt = DateTime.now();
       updatedAt = DateTime.now();
@@ -67,6 +66,7 @@ class Note {
       lastOpenedPage: data['lastOpenedPage'] ?? 1,
       zoomLevel: (data['zoomLevel'] ?? 1.0).toDouble(),
       drawingData: data['drawingData'],
+      templateUrl: data['templateUrl'], // ADD THIS
     );
   }
 
@@ -81,6 +81,7 @@ class Note {
       'lastOpenedPage': lastOpenedPage,
       'zoomLevel': zoomLevel,
       'drawingData': drawingData,
+      'templateUrl': templateUrl, // ADD THIS
     };
   }
 
@@ -94,6 +95,7 @@ class Note {
     int? lastOpenedPage,
     double? zoomLevel,
     Map<String, dynamic>? drawingData,
+    String? templateUrl, // ADD THIS
   }) {
     return Note(
       id: id,
@@ -106,6 +108,7 @@ class Note {
       lastOpenedPage: lastOpenedPage ?? this.lastOpenedPage,
       zoomLevel: zoomLevel ?? this.zoomLevel,
       drawingData: drawingData ?? this.drawingData,
+      templateUrl: templateUrl ?? this.templateUrl, // ADD THIS
     );
   }
 }

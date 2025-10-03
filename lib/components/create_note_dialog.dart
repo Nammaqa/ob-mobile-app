@@ -138,10 +138,11 @@ class _CreateNoteDialogState extends State<CreateNoteDialog> {
           ? _selectedTemplate!.description
           : _descriptionController.text.trim();
 
-      // Create note in Firestore with template information
+      // Create note in Firestore with template URL
       final noteId = await _noteService.createNote(
         name: name,
         description: description,
+        templateUrl: _selectedTemplate!.url, // Pass the template URL
       );
 
       // Wait a bit to ensure the document is fully written
