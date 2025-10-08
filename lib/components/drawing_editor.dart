@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
+
 enum DrawingTool {
   none,
   undo,
@@ -448,7 +449,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
                           _buildToolButton(
                             iconPath: ToolbarIcons.imageUploader,
                             icon: Icons.image,
-                            onTap: _pickImageFromGallery,
+                            onTap: _showImageOptions,
                             tooltip: 'Upload Image',
                           ),
                           const SizedBox(width: 8),
@@ -1092,6 +1093,62 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   }
 
   // Action methods
+  void _showImageOptions() {
+    // Calculate the position of the image uploader icon in the toolbar
+    // The icon is roughly in the center-right area of the toolbar
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    // Show menu below the image uploader icon
+    showMenu<String>(
+      context: context,
+      color: Colors.white,
+      position: RelativeRect.fromLTRB(
+        screenWidth * 0.58, // Adjust horizontal position to align with image icon
+        185, // Position just below toolbar (60px toolbar + 5px gap)
+        screenWidth * 0.58,
+        0,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      elevation: 4,
+      items: [
+        PopupMenuItem<String>(
+          value: 'gallery',
+          child: Container(
+            color: Colors.white,
+            child: Row(
+              children: [
+                Icon(Icons.photo_library, color: Colors.black, size: 20),
+                const SizedBox(width: 12),
+                const Text('Select from Gallery', style: TextStyle(color: Colors.black)),
+              ],
+            ),
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'camera',
+          child: Container(
+            color: Colors.white,
+            child: Row(
+              children: [
+                Icon(Icons.camera_alt, color: Colors.black, size: 20),
+                const SizedBox(width: 12),
+                const Text('Capture Image', style: TextStyle(color: Colors.black)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'gallery') {
+        _pickImageFromGallery();
+      } else if (value == 'camera') {
+        _takePicture();
+      }
+    });
+  }
+
   Future<void> _takePicture() async {
     try {
       final XFile? image = await _imagePicker.pickImage(
