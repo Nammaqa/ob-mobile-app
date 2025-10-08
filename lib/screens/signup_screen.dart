@@ -41,6 +41,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: false, // KEY CHANGE: Prevents layout shift
       body: Stack(
         children: [
           // Large circle - top left (partially visible)
@@ -237,6 +238,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
+                // KEY CHANGE: Add padding for keyboard
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 40),
                   child: Container(
@@ -796,7 +801,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Future<void> _handleSignUp() async {
-    // Validate form
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -806,27 +810,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      // Create user with Firebase Auth
       UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
-      // Update the user's display name
       await userCredential.user?.updateDisplayName(
         '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}',
       );
 
-      // Create user document in Firestore
       await _createUserDocument(userCredential.user!);
-
-      // Send email verification
       await userCredential.user?.sendEmailVerification();
 
       if (mounted) {
         _showSnackBar('Account created successfully! Please check your email for verification.', Colors.green);
-
-        // Wait a moment then navigate to verification screen
         await Future.delayed(const Duration(milliseconds: 1500));
 
         Navigator.pushReplacement(
@@ -877,7 +874,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Future<void> _createUserDocument(User user) async {
     try {
-      // Create user document in Firestore
       await _firestore.collection('users').doc(user.uid).set({
         'uid': user.uid,
         'email': user.email,
@@ -901,8 +897,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       print('User document created successfully for: ${user.uid}');
     } catch (e) {
       print('Error creating user document: $e');
-      // Don't throw error here as the user account was created successfully
-      // Just log the error for debugging
     }
   }
 
@@ -933,16 +927,13 @@ class WavyMPainter extends CustomPainter {
 
     final path = Path();
 
-    // Create wavy M shape
     final centerX = size.width / 2;
     final centerY = size.height / 2;
     final width = size.width * 0.6;
     final height = size.height * 0.4;
 
-    // Start point (left)
     path.moveTo(centerX - width / 2, centerY + height / 2);
 
-    // First curve up
     path.quadraticBezierTo(
       centerX - width / 4,
       centerY - height / 2,
@@ -950,7 +941,6 @@ class WavyMPainter extends CustomPainter {
       centerY,
     );
 
-    // Second curve up
     path.quadraticBezierTo(
       centerX + width / 4,
       centerY - height / 2,

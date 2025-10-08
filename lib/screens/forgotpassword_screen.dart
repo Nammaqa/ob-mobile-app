@@ -35,6 +35,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: false, // KEY CHANGE: Prevents layout shift
       body: Stack(
         children: [
           // Background circles (matching your login screen design)
@@ -249,6 +250,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 Expanded(
                   child: Center(
                     child: SingleChildScrollView(
+                      // KEY CHANGE: Add padding for keyboard
+                      padding: EdgeInsets.only(
+                        bottom: MediaQuery.of(context).viewInsets.bottom,
+                      ),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 40),
                         child: Container(
