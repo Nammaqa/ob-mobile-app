@@ -29,6 +29,18 @@ enum DrawingTool {
   future,
 }
 
+enum ShapeType {
+  circle,
+  square,
+  triangle,
+  rectangle,
+  star,
+  arrow,
+  heart,
+  pentagon,
+  hexagon,
+}
+
 class DrawingPoint {
   final Offset offset;
   final Paint paint;
@@ -164,6 +176,45 @@ class ImageAnnotation {
   }
 }
 
+// Shape annotation class
+class ShapeAnnotation {
+  final Offset position;
+  final ShapeType shapeType;
+  final Size size;
+  final Color color;
+  final double strokeWidth;
+
+  ShapeAnnotation({
+    required this.position,
+    required this.shapeType,
+    required this.size,
+    required this.color,
+    required this.strokeWidth,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'x': position.dx,
+      'y': position.dy,
+      'shapeType': shapeType.index,
+      'width': size.width,
+      'height': size.height,
+      'color': color.value,
+      'strokeWidth': strokeWidth,
+    };
+  }
+
+  factory ShapeAnnotation.fromJson(Map<String, dynamic> json) {
+    return ShapeAnnotation(
+      position: Offset(json['x'], json['y']),
+      shapeType: ShapeType.values[json['shapeType']],
+      size: Size(json['width'], json['height']),
+      color: Color(json['color']),
+      strokeWidth: json['strokeWidth'],
+    );
+  }
+}
+
 // Custom icon paths for your PNG icons
 class ToolbarIcons {
   static const String undo = 'assets/icons/undo.png';
@@ -173,7 +224,7 @@ class ToolbarIcons {
   static const String pencil = 'assets/icons/pencil.png';
   static const String marker = 'assets/icons/marker_pen.png';
   static const String eraser = 'assets/icons/eraser.png';
-  static const String camera = 'assets/icons/camera.png';
+  static const String camera = 'assets/icons/shapes.png';
   static const String copy = 'assets/icons/copy.png';
   static const String text = 'assets/icons/text.png';
   static const String zoom = 'assets/icons/zoom_in.png';
@@ -208,20 +259,23 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   double _strokeWidth = 2.0;
   double _zoomLevel = 1.0;
   bool _isTextMode = false;
+  bool _showShapesDropdown = false;
 
   Map<int, List<DrawingPath>> _pageDrawings = {};
   Map<int, List<TextAnnotation>> _pageTextAnnotations = {};
   Map<int, List<ImageAnnotation>> _pageImageAnnotations = {};
+  Map<int, List<ShapeAnnotation>> _pageShapeAnnotations = {};
   DrawingPath? _currentPath;
 
   Map<int, List<List<DrawingPath>>> _undoStacks = {};
   Map<int, List<List<DrawingPath>>> _redoStacks = {};
 
-  dynamic _selectedAnnotation; // Can be DrawingPath, ImageAnnotation, or TextAnnotation
+  dynamic _selectedAnnotation;
   Offset? _dragStartPosition;
   Offset? _initialAnnotationPosition;
 
   final GlobalKey _drawingKey = GlobalKey();
+  final GlobalKey _cameraIconKey = GlobalKey();
   bool _isLoading = true;
 
   final NoteService _noteService = NoteService();
@@ -269,6 +323,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   List<DrawingPath> get _currentPagePaths => _pageDrawings[widget.currentPage] ?? [];
   List<TextAnnotation> get _currentPageTextAnnotations => _pageTextAnnotations[widget.currentPage] ?? [];
   List<ImageAnnotation> get _currentPageImageAnnotations => _pageImageAnnotations[widget.currentPage] ?? [];
+  List<ShapeAnnotation> get _currentPageShapeAnnotations => _pageShapeAnnotations[widget.currentPage] ?? [];
 
   @override
   Widget build(BuildContext context) {
@@ -288,6 +343,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
         _buildPdfViewer(),
         _buildOverlay(),
         _buildStreamlinedToolbar(),
+        if (_showShapesDropdown) _buildShapesDropdown(),
         if (_isTextMode && _textPosition != null) _buildTextInputDialog(),
         if (_currentTool != DrawingTool.selector) _buildToolIndicator(),
       ],
@@ -308,7 +364,6 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   }
 
   Widget _buildOverlay() {
-    // When selector tool is active and no annotation is selected, allow PDF navigation
     final shouldIgnoreGestures = _currentTool == DrawingTool.selector && _selectedAnnotation == null;
 
     return Positioned(
@@ -316,27 +371,37 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       left: 0,
       right: 0,
       bottom: 0,
-      child: IgnorePointer(
-        ignoring: shouldIgnoreGestures, // Ignore gestures to allow PDF navigation
-        child: RepaintBoundary(
-          key: _drawingKey,
-          child: GestureDetector(
-            onTapDown: _onTapDown,
-            onPanStart: _onPanStart,
-            onPanUpdate: _onPanUpdate,
-            onPanEnd: _onPanEnd,
-            child: Container(
-              color: Colors.transparent,
-              child: CustomPaint(
-                painter: DrawingPainter(
-                  paths: _currentPagePaths,
-                  textAnnotations: _currentPageTextAnnotations,
-                  imageAnnotations: _currentPageImageAnnotations,
-                  loadedImages: _loadedImages,
-                  currentPath: _currentPath,
-                  selectedAnnotation: _selectedAnnotation,
+      child: GestureDetector(
+        onTap: () {
+          if (_showShapesDropdown) {
+            setState(() {
+              _showShapesDropdown = false;
+            });
+          }
+        },
+        child: IgnorePointer(
+          ignoring: shouldIgnoreGestures,
+          child: RepaintBoundary(
+            key: _drawingKey,
+            child: GestureDetector(
+              onTapDown: _onTapDown,
+              onPanStart: _onPanStart,
+              onPanUpdate: _onPanUpdate,
+              onPanEnd: _onPanEnd,
+              child: Container(
+                color: Colors.transparent,
+                child: CustomPaint(
+                  painter: DrawingPainter(
+                    paths: _currentPagePaths,
+                    textAnnotations: _currentPageTextAnnotations,
+                    imageAnnotations: _currentPageImageAnnotations,
+                    shapeAnnotations: _currentPageShapeAnnotations,
+                    loadedImages: _loadedImages,
+                    currentPath: _currentPath,
+                    selectedAnnotation: _selectedAnnotation,
+                  ),
+                  size: Size.infinite,
                 ),
-                size: Size.infinite,
               ),
             ),
           ),
@@ -345,16 +410,139 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
     );
   }
 
-  bool _hasExistingContent() {
-    return _currentPagePaths.isNotEmpty ||
-        _currentPageTextAnnotations.isNotEmpty ||
-        _currentPageImageAnnotations.isNotEmpty;
+  Widget _buildShapesDropdown() {
+    final RenderBox? renderBox = _cameraIconKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return const SizedBox.shrink();
+
+    final position = renderBox.localToGlobal(Offset.zero);
+    final iconSize = renderBox.size;
+
+    return Positioned(
+      left: position.dx + 20, // Adjust horizontal position (negative = move left, positive = move right)
+      top: position.dy + iconSize.height - 125, // Adjust vertical position (increase number = move down, decrease = move up)
+      child: GestureDetector(
+        onTap: () {},
+        child: Material(
+          elevation: 8,
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.white,
+          child: Container(
+            width: 280,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    'Select Shape',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                GridView.count(
+                  shrinkWrap: true,
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: 1,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _buildShapeItem(ShapeType.circle, 'Circle', Icons.circle_outlined),
+                    _buildShapeItem(ShapeType.square, 'Square', Icons.square_outlined),
+                    _buildShapeItem(ShapeType.triangle, 'Triangle', Icons.change_history),
+                    _buildShapeItem(ShapeType.rectangle, 'Rectangle', Icons.rectangle_outlined),
+                    _buildShapeItem(ShapeType.star, 'Star', Icons.star_outline),
+                    _buildShapeItem(ShapeType.arrow, 'Arrow', Icons.arrow_forward),
+                    _buildShapeItem(ShapeType.heart, 'Heart', Icons.favorite_border),
+                    _buildShapeItem(ShapeType.pentagon, 'Pentagon', Icons.pentagon_outlined),
+                    _buildShapeItem(ShapeType.hexagon, 'Hexagon', Icons.hexagon_outlined),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShapeItem(ShapeType shapeType, String label, IconData icon) {
+    return InkWell(
+      onTap: () {
+        _onShapeSelected(shapeType);
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 32, color: const Color(0xFF374151)),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10,
+                color: Color(0xFF374151),
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _onShapeSelected(ShapeType shapeType) {
+    setState(() {
+      _showShapesDropdown = false;
+    });
+
+    _pushToUndoStack();
+
+    final screenSize = MediaQuery.of(context).size;
+    final shapeSize = const Size(100, 100);
+    final position = Offset(
+      (screenSize.width - shapeSize.width) / 2,
+      (screenSize.height - shapeSize.height) / 2 - 60,
+    );
+
+    final shapeAnnotation = ShapeAnnotation(
+      position: position,
+      shapeType: shapeType,
+      size: shapeSize,
+      color: _currentColor,
+      strokeWidth: _strokeWidth,
+    );
+
+    if (_pageShapeAnnotations[widget.currentPage] == null) {
+      _pageShapeAnnotations[widget.currentPage] = [];
+    }
+
+    _pageShapeAnnotations[widget.currentPage]!.add(shapeAnnotation);
+    setState(() {});
+    _scheduleAutoSync();
   }
 
   Widget _buildStreamlinedToolbar() {
     return Stack(
       children: [
-        // Main centered toolbar
         Positioned(
           top: 0,
           left: 0,
@@ -383,10 +571,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: Row(
                   children: [
-                    // Left spacer to push center content to middle
                     const SizedBox(width: 100),
-
-                    // Center section: All main tools in a continuous row
                     Expanded(
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -440,10 +625,11 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
                           ),
                           const SizedBox(width: 8),
                           _buildToolButton(
+                            key: _cameraIconKey,
                             iconPath: ToolbarIcons.camera,
                             icon: Icons.camera_alt,
-                            onTap: _takePicture,
-                            tooltip: 'Camera',
+                            onTap: _toggleShapesDropdown,
+                            tooltip: 'Shapes',
                           ),
                           const SizedBox(width: 8),
                           _buildToolButton(
@@ -470,8 +656,6 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
                         ],
                       ),
                     ),
-
-                    // Right section: Color and status only
                     Row(
                       children: [
                         const SizedBox(width: 16),
@@ -486,8 +670,6 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
             ),
           ),
         ),
-
-        // Separate Undo/Redo buttons in top-left corner
         Positioned(
           top: 12,
           left: 12,
@@ -537,6 +719,12 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
     );
   }
 
+  void _toggleShapesDropdown() {
+    setState(() {
+      _showShapesDropdown = !_showShapesDropdown;
+    });
+  }
+
   Widget _buildCompactToolButton({
     required String iconPath,
     IconData? icon,
@@ -563,6 +751,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   }
 
   Widget _buildToolButton({
+    Key? key,
     required String iconPath,
     IconData? icon,
     bool isSelected = false,
@@ -573,6 +762,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
     return Tooltip(
       message: tooltip,
       child: Material(
+        key: key,
         color: Colors.transparent,
         child: InkWell(
           onTap: isEnabled ? onTap : null,
@@ -597,12 +787,10 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   }
 
   Widget _buildIcon(String iconPath, IconData? fallbackIcon, bool isSelected, bool isEnabled) {
-    // Try to load the asset image first, fallback to Material icon
     return FutureBuilder<bool>(
       future: _checkAssetExists(iconPath),
       builder: (context, snapshot) {
         if (snapshot.hasData && snapshot.data == true) {
-          // Asset exists, use it
           return Image.asset(
             iconPath,
             width: 24,
@@ -613,7 +801,6 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
                 ? Colors.white
                 : const Color(0xFF374151),
             errorBuilder: (context, error, stackTrace) {
-              // If asset fails to load, use fallback icon
               return Icon(
                 fallbackIcon ?? Icons.help_outline,
                 size: 24,
@@ -626,7 +813,6 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
             },
           );
         } else {
-          // Use fallback icon
           return Icon(
             fallbackIcon ?? Icons.help_outline,
             size: 24,
@@ -802,6 +988,8 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
 
   // Tool functionality methods
   void _onTapDown(TapDownDetails details) {
+    if (_showShapesDropdown) return;
+
     switch (_currentTool) {
       case DrawingTool.text:
         setState(() {
@@ -827,13 +1015,30 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       // Check for drawing paths
       for (final path in _currentPagePaths) {
         for (final point in path.points) {
-          if ((point.offset - position).distance < 20.0) { // Hit-test radius
+          if ((point.offset - position).distance < 20.0) {
             _selectedAnnotation = path;
-            _initialAnnotationPosition = path.points.first.offset; // Store initial position
+            _initialAnnotationPosition = path.points.first.offset;
             break;
           }
         }
         if (_selectedAnnotation != null) break;
+      }
+
+      // Check for shape annotations
+      if (_selectedAnnotation == null) {
+        for (final shape in _currentPageShapeAnnotations) {
+          final rect = Rect.fromLTWH(
+            shape.position.dx,
+            shape.position.dy,
+            shape.size.width,
+            shape.size.height,
+          );
+          if (rect.contains(position)) {
+            _selectedAnnotation = shape;
+            _initialAnnotationPosition = shape.position;
+            break;
+          }
+        }
       }
 
       // Check for image annotations
@@ -877,6 +1082,8 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   }
 
   void _onPanStart(DragStartDetails details) {
+    if (_showShapesDropdown) return;
+
     if (_currentTool == DrawingTool.selector && _selectedAnnotation != null) {
       _dragStartPosition = details.localPosition;
       _pushToUndoStack();
@@ -910,6 +1117,8 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
+    if (_showShapesDropdown) return;
+
     if (_currentTool == DrawingTool.selector && _selectedAnnotation != null && _dragStartPosition != null) {
       final delta = details.localPosition - _dragStartPosition!;
       final newPosition = _initialAnnotationPosition! + delta;
@@ -930,6 +1139,17 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
               points: newPoints,
               paint: path.paint,
               tool: path.tool,
+            );
+          }
+        } else if (_selectedAnnotation is ShapeAnnotation) {
+          final index = _currentPageShapeAnnotations.indexOf(_selectedAnnotation);
+          if (index != -1) {
+            _pageShapeAnnotations[widget.currentPage]![index] = ShapeAnnotation(
+              position: newPosition,
+              shapeType: (_selectedAnnotation as ShapeAnnotation).shapeType,
+              size: (_selectedAnnotation as ShapeAnnotation).size,
+              color: (_selectedAnnotation as ShapeAnnotation).color,
+              strokeWidth: (_selectedAnnotation as ShapeAnnotation).strokeWidth,
             );
           }
         } else if (_selectedAnnotation is ImageAnnotation) {
@@ -971,7 +1191,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   }
 
   void _performErasure(Offset position) {
-    final eraserRadius = _strokeWidth * 3; // Increase eraser radius
+    final eraserRadius = _strokeWidth * 3;
     final pathsToRemove = <DrawingPath>[];
 
     for (final path in _currentPagePaths) {
@@ -992,6 +1212,8 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   }
 
   void _onPanEnd(DragEndDetails details) {
+    if (_showShapesDropdown) return;
+
     if (_currentTool == DrawingTool.selector && _selectedAnnotation != null) {
       _selectedAnnotation = null;
       _dragStartPosition = null;
@@ -1000,7 +1222,6 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       return;
     }
 
-    // Don't create paths for eraser tool
     if (_currentTool == DrawingTool.eraser) {
       return;
     }
@@ -1035,7 +1256,6 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
         paint.strokeWidth = _strokeWidth * 3;
         break;
       case DrawingTool.eraser:
-      // This shouldn't be used since eraser doesn't create paths
         paint.color = Colors.transparent;
         paint.strokeWidth = _strokeWidth * 2;
         break;
@@ -1055,6 +1275,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
     setState(() {
       _currentTool = tool;
       _isTextMode = tool == DrawingTool.text;
+      _showShapesDropdown = false;
       if (!_isTextMode) {
         _textPosition = null;
       }
@@ -1094,17 +1315,14 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
 
   // Action methods
   void _showImageOptions() {
-    // Calculate the position of the image uploader icon in the toolbar
-    // The icon is roughly in the center-right area of the toolbar
     final screenWidth = MediaQuery.of(context).size.width;
 
-    // Show menu below the image uploader icon
     showMenu<String>(
       context: context,
       color: Colors.white,
       position: RelativeRect.fromLTRB(
-        screenWidth * 0.58, // Adjust horizontal position to align with image icon
-        185, // Position just below toolbar (60px toolbar + 5px gap)
+        screenWidth * 0.58,
+        185,
         screenWidth * 0.58,
         0,
       ),
@@ -1144,12 +1362,12 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       if (value == 'gallery') {
         _pickImageFromGallery();
       } else if (value == 'camera') {
-        _takePicture();
+        _captureImageFromCamera();
       }
     });
   }
 
-  Future<void> _takePicture() async {
+  Future<void> _captureImageFromCamera() async {
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.camera,
@@ -1161,7 +1379,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
         await _addImageToCurrentPage(image.path);
       }
     } catch (e) {
-      _showErrorSnackBar('Failed to take picture: $e');
+      _showErrorSnackBar('Failed to capture image: $e');
     }
   }
 
@@ -1462,6 +1680,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
                 _pageDrawings[widget.currentPage] = [];
                 _pageTextAnnotations[widget.currentPage] = [];
                 _pageImageAnnotations[widget.currentPage] = [];
+                _pageShapeAnnotations[widget.currentPage] = [];
               });
               _scheduleAutoSync();
             },
@@ -1624,6 +1843,19 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
         await _loadImagesFromAnnotations();
       }
 
+      if (drawingData['shapes'] != null) {
+        final shapesMap = drawingData['shapes'] as Map<String, dynamic>;
+        _pageShapeAnnotations.clear();
+
+        shapesMap.forEach((pageStr, shapesList) {
+          final pageNum = int.parse(pageStr);
+          final List<ShapeAnnotation> shapes = (shapesList as List)
+              .map((s) => ShapeAnnotation.fromJson(s))
+              .toList();
+          _pageShapeAnnotations[pageNum] = shapes;
+        });
+      }
+
       if (drawingData['settings'] != null) {
         final settings = drawingData['settings'] as Map<String, dynamic>;
         _currentColor = Color(settings['color'] ?? Colors.black.value);
@@ -1681,6 +1913,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       'drawings': {},
       'texts': {},
       'images': {},
+      'shapes': {},
       'settings': {
         'color': _currentColor.value,
         'strokeWidth': _strokeWidth,
@@ -1706,6 +1939,12 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       }
     });
 
+    _pageShapeAnnotations.forEach((pageNum, shapes) {
+      if (shapes.isNotEmpty) {
+        drawingData['shapes'][pageNum.toString()] = shapes.map((s) => s.toJson()).toList();
+      }
+    });
+
     return drawingData;
   }
 
@@ -1715,9 +1954,11 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       final String key = 'page_drawings_${widget.noteId}';
       final String textKey = 'page_texts_${widget.noteId}';
       final String imageKey = 'page_images_${widget.noteId}';
+      final String shapeKey = 'page_shapes_${widget.noteId}';
       final String? drawingsJson = prefs.getString(key);
       final String? textsJson = prefs.getString(textKey);
       final String? imagesJson = prefs.getString(imageKey);
+      final String? shapesJson = prefs.getString(shapeKey);
 
       if (drawingsJson != null) {
         final Map<String, dynamic> drawingsMap = json.decode(drawingsJson);
@@ -1760,6 +2001,19 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
         await _loadImagesFromAnnotations();
       }
 
+      if (shapesJson != null) {
+        final Map<String, dynamic> shapesMap = json.decode(shapesJson);
+        _pageShapeAnnotations.clear();
+
+        shapesMap.forEach((pageStr, shapesList) {
+          final pageNum = int.parse(pageStr);
+          final List<ShapeAnnotation> shapes = (shapesList as List)
+              .map((s) => ShapeAnnotation.fromJson(s))
+              .toList();
+          _pageShapeAnnotations[pageNum] = shapes;
+        });
+      }
+
       _currentColor = Color(prefs.getInt('drawing_color_${widget.noteId}') ?? Colors.black.value);
       _strokeWidth = prefs.getDouble('drawing_stroke_${widget.noteId}') ?? 2.0;
 
@@ -1774,6 +2028,7 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
       final String key = 'page_drawings_${widget.noteId}';
       final String textKey = 'page_texts_${widget.noteId}';
       final String imageKey = 'page_images_${widget.noteId}';
+      final String shapeKey = 'page_shapes_${widget.noteId}';
 
       if (_pageDrawings.isNotEmpty) {
         final Map<String, dynamic> drawingsMap = {};
@@ -1826,6 +2081,23 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
         await prefs.remove(imageKey);
       }
 
+      if (_pageShapeAnnotations.isNotEmpty) {
+        final Map<String, dynamic> shapesMap = {};
+        _pageShapeAnnotations.forEach((pageNum, shapes) {
+          if (shapes.isNotEmpty) {
+            shapesMap[pageNum.toString()] = shapes.map((s) => s.toJson()).toList();
+          }
+        });
+
+        if (shapesMap.isNotEmpty) {
+          await prefs.setString(shapeKey, json.encode(shapesMap));
+        } else {
+          await prefs.remove(shapeKey);
+        }
+      } else {
+        await prefs.remove(shapeKey);
+      }
+
       await prefs.setInt('drawing_color_${widget.noteId}', _currentColor.value);
       await prefs.setDouble('drawing_stroke_${widget.noteId}', _strokeWidth);
 
@@ -1841,7 +2113,8 @@ class _DrawingOverlayState extends State<DrawingOverlay> with AutomaticKeepAlive
   void _saveCurrentPageDrawing(int pageNumber) {
     if (_pageDrawings[pageNumber]?.isNotEmpty == true ||
         _pageTextAnnotations[pageNumber]?.isNotEmpty == true ||
-        _pageImageAnnotations[pageNumber]?.isNotEmpty == true) {
+        _pageImageAnnotations[pageNumber]?.isNotEmpty == true ||
+        _pageShapeAnnotations[pageNumber]?.isNotEmpty == true) {
       _scheduleAutoSync();
     }
   }
@@ -1852,14 +2125,16 @@ class DrawingPainter extends CustomPainter {
   final List<DrawingPath> paths;
   final List<TextAnnotation> textAnnotations;
   final List<ImageAnnotation> imageAnnotations;
+  final List<ShapeAnnotation> shapeAnnotations;
   final Map<String, ui.Image> loadedImages;
   final DrawingPath? currentPath;
-  final dynamic selectedAnnotation; // Add selectedAnnotation
+  final dynamic selectedAnnotation;
 
   DrawingPainter({
     required this.paths,
     required this.textAnnotations,
     required this.imageAnnotations,
+    required this.shapeAnnotations,
     required this.loadedImages,
     this.currentPath,
     this.selectedAnnotation,
@@ -1872,9 +2147,14 @@ class DrawingPainter extends CustomPainter {
       _drawPath(canvas, drawingPath, drawingPath == selectedAnnotation);
     }
 
-    // Draw current path being drawn (not for eraser)
+    // Draw current path being drawn
     if (currentPath != null && currentPath!.tool != DrawingTool.eraser) {
       _drawPath(canvas, currentPath!, false);
+    }
+
+    // Draw shapes
+    for (final shapeAnnotation in shapeAnnotations) {
+      _drawShape(canvas, shapeAnnotation, shapeAnnotation == selectedAnnotation);
     }
 
     // Draw images
@@ -1892,7 +2172,6 @@ class DrawingPainter extends CustomPainter {
     if (drawingPath.points.isEmpty) return;
 
     if (isSelected) {
-      // Draw a highlight outline for selected paths
       final highlightPaint = Paint()
         ..color = Colors.blue.withOpacity(0.3)
         ..style = PaintingStyle.stroke
@@ -1936,6 +2215,165 @@ class DrawingPainter extends CustomPainter {
     canvas.drawPath(path, drawingPath.paint);
   }
 
+  void _drawShape(Canvas canvas, ShapeAnnotation shapeAnnotation, bool isSelected) {
+    final paint = Paint()
+      ..color = shapeAnnotation.color
+      ..strokeWidth = shapeAnnotation.strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final center = Offset(
+      shapeAnnotation.position.dx + shapeAnnotation.size.width / 2,
+      shapeAnnotation.position.dy + shapeAnnotation.size.height / 2,
+    );
+
+    if (isSelected) {
+      final highlightPaint = Paint()
+        ..color = Colors.blue.withOpacity(0.3)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = shapeAnnotation.strokeWidth + 4;
+
+      final rect = Rect.fromLTWH(
+        shapeAnnotation.position.dx,
+        shapeAnnotation.position.dy,
+        shapeAnnotation.size.width,
+        shapeAnnotation.size.height,
+      );
+      canvas.drawRect(rect, highlightPaint);
+    }
+
+    switch (shapeAnnotation.shapeType) {
+      case ShapeType.circle:
+        canvas.drawCircle(
+          center,
+          shapeAnnotation.size.width / 2,
+          paint,
+        );
+        break;
+      case ShapeType.square:
+      case ShapeType.rectangle:
+        final rect = Rect.fromLTWH(
+          shapeAnnotation.position.dx,
+          shapeAnnotation.position.dy,
+          shapeAnnotation.size.width,
+          shapeAnnotation.size.height,
+        );
+        canvas.drawRect(rect, paint);
+        break;
+      case ShapeType.triangle:
+        final path = Path();
+        path.moveTo(center.dx, shapeAnnotation.position.dy);
+        path.lineTo(
+          shapeAnnotation.position.dx,
+          shapeAnnotation.position.dy + shapeAnnotation.size.height,
+        );
+        path.lineTo(
+          shapeAnnotation.position.dx + shapeAnnotation.size.width,
+          shapeAnnotation.position.dy + shapeAnnotation.size.height,
+        );
+        path.close();
+        canvas.drawPath(path, paint);
+        break;
+      case ShapeType.star:
+        _drawStar(canvas, center, shapeAnnotation.size.width / 2, paint);
+        break;
+      case ShapeType.arrow:
+        _drawArrow(canvas, shapeAnnotation.position, shapeAnnotation.size, paint);
+        break;
+      case ShapeType.heart:
+        _drawHeart(canvas, center, shapeAnnotation.size.width / 2, paint);
+        break;
+      case ShapeType.pentagon:
+        _drawPolygon(canvas, center, shapeAnnotation.size.width / 2, 5, paint);
+        break;
+      case ShapeType.hexagon:
+        _drawPolygon(canvas, center, shapeAnnotation.size.width / 2, 6, paint);
+        break;
+    }
+  }
+
+  void _drawStar(Canvas canvas, Offset center, double radius, Paint paint) {
+    final path = Path();
+    final points = 5;
+    final angle = math.pi / points;
+
+    for (int i = 0; i < points * 2; i++) {
+      final r = i.isEven ? radius : radius / 2;
+      final x = center.dx + r * math.cos(i * angle - math.pi / 2);
+      final y = center.dy + r * math.sin(i * angle - math.pi / 2);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawArrow(Canvas canvas, Offset position, Size size, Paint paint) {
+    final path = Path();
+    final tipX = position.dx + size.width;
+    final tipY = position.dy + size.height / 2;
+
+    path.moveTo(position.dx, tipY);
+    path.lineTo(tipX - size.width * 0.3, tipY);
+    path.lineTo(tipX - size.width * 0.3, position.dy);
+    path.lineTo(tipX, tipY);
+    path.lineTo(tipX - size.width * 0.3, position.dy + size.height);
+    path.lineTo(tipX - size.width * 0.3, tipY);
+
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawHeart(Canvas canvas, Offset center, double radius, Paint paint) {
+    final path = Path();
+    path.moveTo(center.dx, center.dy + radius * 0.3);
+
+    path.cubicTo(
+      center.dx - radius * 0.5, center.dy - radius * 0.5,
+      center.dx - radius, center.dy - radius * 0.2,
+      center.dx - radius, center.dy + radius * 0.3,
+    );
+
+    path.cubicTo(
+      center.dx - radius, center.dy + radius * 0.8,
+      center.dx, center.dy + radius,
+      center.dx, center.dy + radius,
+    );
+
+    path.cubicTo(
+      center.dx, center.dy + radius,
+      center.dx + radius, center.dy + radius * 0.8,
+      center.dx + radius, center.dy + radius * 0.3,
+    );
+
+    path.cubicTo(
+      center.dx + radius, center.dy - radius * 0.2,
+      center.dx + radius * 0.5, center.dy - radius * 0.5,
+      center.dx, center.dy + radius * 0.3,
+    );
+
+    canvas.drawPath(path, paint);
+  }
+
+  void _drawPolygon(Canvas canvas, Offset center, double radius, int sides, Paint paint) {
+    final path = Path();
+    final angle = (math.pi * 2) / sides;
+
+    for (int i = 0; i < sides; i++) {
+      final x = center.dx + radius * math.cos(i * angle - math.pi / 2);
+      final y = center.dy + radius * math.sin(i * angle - math.pi / 2);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
   void _drawImage(Canvas canvas, ImageAnnotation imageAnnotation, bool isSelected) {
     final image = loadedImages[imageAnnotation.imagePath];
     if (image != null) {
@@ -1948,7 +2386,6 @@ class DrawingPainter extends CustomPainter {
       );
 
       if (isSelected) {
-        // Draw a highlight border for selected images
         final highlightPaint = Paint()
           ..color = Colors.blue.withOpacity(0.3)
           ..style = PaintingStyle.stroke
@@ -1972,7 +2409,6 @@ class DrawingPainter extends CustomPainter {
     textPainter.layout();
 
     if (isSelected) {
-      // Draw a highlight background for selected text
       final highlightPaint = Paint()
         ..color = Colors.blue.withOpacity(0.3);
       final rect = Rect.fromLTWH(

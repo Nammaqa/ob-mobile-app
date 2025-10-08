@@ -1,6 +1,7 @@
 // components/settings_dropdown.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'settings_popup.dart';
 
 class SettingsDropdown extends StatelessWidget {
   final VoidCallback? onClose;
@@ -143,9 +144,18 @@ class SettingsDropdown extends StatelessWidget {
                     title: 'Settings',
                     onTap: () {
                       onClose?.call();
-                      // Handle settings
+                      showSettingsPopup(context);  // Add this line
                     },
                   ),
+                  // _buildMenuItem(
+                  //   assetPath: 'assets/icons/Cloud&Backup.png',
+                  //   title: 'Cloud & Backup',
+                  //   onTap: () {
+                  //     onClose?.call();
+                  //     showSettingsPopup(context);
+                  //     // Handle settings
+                  //   },
+                  // ),
                   _buildMenuItem(
                     icon: Icons.delete_outline,
                     title: 'Trash',
