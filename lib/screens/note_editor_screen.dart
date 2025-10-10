@@ -90,6 +90,23 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
           _isEditorActive = false;
           _handleVoiceOption();
           break;
+        case ToolbarOption.apps:
+          _isEditorActive = false;
+          _handleAppsOption();
+          break;
+        case ToolbarOption.search:
+          _isEditorActive = false;
+          _handleSearchOption();
+          break;
+        case ToolbarOption.copy:
+          _handleCopyOption();
+          break;
+        case ToolbarOption.bookmark:
+          _handleBookmarkOption();
+          break;
+        case ToolbarOption.more:
+          _handleMoreOption();
+          break;
       }
     });
   }
@@ -151,6 +168,194 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> with WidgetsBinding
           label: 'OK',
           textColor: Colors.white,
           onPressed: () {},
+        ),
+      ),
+    );
+  }
+
+  void _handleAppsOption() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Apps'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Quick access to your apps'),
+            const SizedBox(height: 16),
+            // You can add a grid of app icons here
+            Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: [
+                _buildAppIcon(Icons.note_alt, 'Notes'),
+                _buildAppIcon(Icons.folder, 'Files'),
+                _buildAppIcon(Icons.calendar_today, 'Calendar'),
+                _buildAppIcon(Icons.task_alt, 'Tasks'),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppIcon(IconData icon, String label) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 32, color: Colors.blue),
+        ),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(fontSize: 12)),
+      ],
+    );
+  }
+
+  void _handleSearchOption() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Search Notes'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              decoration: const InputDecoration(
+                labelText: 'Search',
+                hintText: 'Type to search...',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Search feature coming soon...'),
+                  backgroundColor: Colors.blue,
+                ),
+              );
+            },
+            child: const Text('Search'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleCopyOption() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.content_copy, color: Colors.white),
+            const SizedBox(width: 8),
+            Text('Copied "${widget.noteName}" details'),
+          ],
+        ),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 2),
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
+  void _handleBookmarkOption() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.bookmark, color: Colors.white),
+            const SizedBox(width: 8),
+            Text('Note "${widget.noteName}" bookmarked'),
+          ],
+        ),
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 2),
+        action: SnackBarAction(
+          label: 'UNDO',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
+  void _handleMoreOption() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.share),
+              title: const Text('Share Note'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Share feature coming soon...')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.print),
+              title: const Text('Print'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Print feature coming soon...')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.color_lens),
+              title: const Text('Change Theme'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Theme feature coming soon...')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Settings feature coming soon...')),
+                );
+              },
+            ),
+          ],
         ),
       ),
     );
