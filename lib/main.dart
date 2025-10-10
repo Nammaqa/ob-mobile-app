@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Add this import
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:organize/screens/login_screen.dart';
 import 'package:organize/screens/homepage_screen.dart';
-import 'package:organize/screens/splash_screen.dart'; // Add this import
+import 'package:organize/screens/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Lock orientation to landscape mode only
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -24,11 +32,11 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         scaffoldBackgroundColor: Colors.white,
-
+        canvasColor: Colors.white,
       ),
-      home: const SplashScreen(), // Changed from LoginPage() to SplashScreen()
+      home: const SplashScreen(),
       routes: {
-        '/splash': (context) => const SplashScreen(), // Optional: add splash route
+        '/splash': (context) => const SplashScreen(),
         '/login': (context) => const LoginPage(),
         '/homepage': (context) => const HomepageScreen(),
       },

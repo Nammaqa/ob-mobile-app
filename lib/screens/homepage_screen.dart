@@ -155,126 +155,58 @@ class _HomepageScreenState extends State<HomepageScreen> {
               const Spacer(),
               Row(
                 children: [
-                  // Grid/List toggle with gradient background
-                  InkWell(
-                    onTap: () {
+                  // Sort/Filter toggle
+                  IconButton(
+                    onPressed: () {
+                      // Add sort functionality
+                    },
+                    icon: const Icon(
+                      Icons.import_export, // Up/Down arrows
+                      color: Colors.grey,
+                      size: 24,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 6),
+                  // Grid view button
+                  IconButton(
+                    onPressed: () {
                       setState(() {
                         _viewMode = _viewMode == 'grid' ? 'list' : 'grid';
                       });
                     },
-                    borderRadius: BorderRadius.circular(4),
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Color(0xFF202020),
-                            Color(0xFF6F6F6F),
-                            Color(0xFF999999),
-                            Color(0xFFB1B1B1),
-                            Color(0xFFD9D9D9),
-                          ],
-                          stops: [0.0, 0.25, 0.5, 0.75, 1.0],
-                        ),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Icon(
-                        _viewMode == 'grid' ? Icons.list : Icons.grid_view,
-                        color: Colors.white,
-                        size: 16,
-                      ),
+                    icon: Icon(
+                      _viewMode == 'grid' ? Icons.grid_view : Icons.view_list,
+                      color: Colors.grey,
+                      size: 24,
                     ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
-                  const SizedBox(width: 8),
-                  // Refresh button with gradient background
-                  InkWell(
-                    onTap: () {
-                      setState(() {}); // Force refresh
-                    },
-                    borderRadius: BorderRadius.circular(4),
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Color(0xFF202020),
-                            Color(0xFF6F6F6F),
-                            Color(0xFF999999),
-                            Color(0xFFB1B1B1),
-                            Color(0xFFD9D9D9),
-                          ],
-                          stops: [0.0, 0.25, 0.5, 0.75, 1.0],
-                        ),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Icon(
-                        Icons.refresh,
-                        color: Colors.white,
-                        size: 16,
-                      ),
+                  const SizedBox(width: 6),
+                  // More options button (three dots horizontal)
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(
+                      Icons.more_horiz, // Three horizontal dots
+                      color: Colors.grey,
+                      size: 24,
                     ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
-                  const SizedBox(width: 8),
-                  // Additional button
-                  InkWell(
-                    onTap: () {},
-                    borderRadius: BorderRadius.circular(4),
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Color(0xFF202020),
-                            Color(0xFF6F6F6F),
-                            Color(0xFF999999),
-                            Color(0xFFB1B1B1),
-                            Color(0xFFD9D9D9),
-                          ],
-                          stops: [0.0, 0.25, 0.5, 0.75, 1.0],
-                        ),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Icon(
-                        Icons.more_vert,
-                        color: Colors.white,
-                        size: 16,
-                      ),
+                  const SizedBox(width: 6),
+                  // Cloud button
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(
+                      Icons.cloud_outlined, // Cloud icon
+                      color: Colors.grey,
+                      size: 24,
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Settings button
-                  InkWell(
-                    onTap: () {},
-                    borderRadius: BorderRadius.circular(4),
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Color(0xFF202020),
-                            Color(0xFF6F6F6F),
-                            Color(0xFF999999),
-                            Color(0xFFB1B1B1),
-                            Color(0xFFD9D9D9),
-                          ],
-                          stops: [0.0, 0.25, 0.5, 0.75, 1.0],
-                        ),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Icon(
-                        Icons.settings,
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
                 ],
               ),
